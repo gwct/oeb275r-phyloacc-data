@@ -1,0 +1,41 @@
+# phyloacc_post.py combines and summarizes the output from batched PhyloAcc runs.
+#
+# The date and time at the start is: 10.23.2022 | 10:26:13
+# Using Python version:              3.9.13
+#
+# The program was called as:         /n/home07/gthomas/projects/PhyloAcc/src/PhyloAcc-interface/phyloacc_post.py -i gt-test-branches/ -bf1 4 -bf2 4 -bf3 4
+#
+# ------------------------------------------------------------------------------------------------------------------------------------------------------
+# INPUT/OUTPUT INFO:
+# PhyloAcc interface dir:          /n/holylfs05/LABS/informatics/Everyone/phyloacc-data/workshop-20221027/mammal/gt-test-branches
+# PhyloAcc interface log file:     /n/holylfs05/LABS/informatics/Everyone/phyloacc-data/workshop-20221027/mammal/gt-test-branches/gt-test-branches.log
+# PhyloAcc run directory:          /n/holylfs05/LABS/informatics/Everyone/phyloacc-data/workshop-20221027/mammal/gt-test-branches/phyloacc-job-files/phyloacc-output
+# Output directory:                /n/holylfs05/LABS/informatics/Everyone/phyloacc-data/workshop-20221027/mammal/gt-test-branches
+# Log file:                        phyloacc-post.log
+# ------------------------------------------------------------------------------------------------------------------------------------------------------
+# OPTIONS INFO:
+# Option                           Current setting               Current action
+# BF1 cutoff (-bf1)                4.0                           The cutoff used to determine if M1 fits better than M0 for an element.
+# BF2 cutoff (-bf2)                4.0                           The cutoff used to determine if M1 fits better than M2 for an element.
+# BF3 cutoff (-bf3)                4.0                           The cutoff used to determine if M2 fits better than M0 for an element.
+# --quiet                          False                         Time, memory, and status info will be printed to the screen while PhyloAcc is running.
+# ------------------------------------------------------------------------------------------------------------------------------------------------------
+# Date        Time      Current step                            Status                                  Elapsed time (s)    Step time (s)   
+# ------------------------------------------------------------------------------------------------------------------------------------------------------
+# 10.23.2022  10:26:14  Reading input from-log tree             Success: rooted tree read               0.17343             0.00885         
+# INFO: Tree has 62 tips and 62 internal nodes
+# 10.23.2022  10:26:14  Preparing output files                  Success: files created                  0.26599             0.08143         
+# 10.23.2022  10:26:25  Gathering batch outputs                 Success: files combined                 11.79585            11.524          
+# 10.23.2022  10:26:26  Writing main output file (elem_lik.txt) Success                                 12.3731             0.57122         
+# 10.23.2022  10:26:28  Generating summary plots                Success                                 14.41433            2.03539         
+# 10.23.2022  10:26:28  Writing HTML summary file               Success                                 14.44176            0.02137         
+# ======================================================================================================================================================
+#
+# Done!
+# The date and time at the end is: 10.23.2022 | 10:26:28
+# Total execution time:            14.447 seconds.
+# Output directory for this run:   /n/holylfs05/LABS/informatics/Everyone/phyloacc-data/workshop-20221027/mammal/gt-test-branches
+# Log file for this run:           /n/holylfs05/LABS/informatics/Everyone/phyloacc-data/workshop-20221027/mammal/gt-test-branches/phyloacc-post.log
+# HTML summary file:               /n/holylfs05/LABS/informatics/Everyone/phyloacc-data/workshop-20221027/mammal/gt-test-branches/phyloacc-results.html
+# ======================================================================================================================================================
+#
