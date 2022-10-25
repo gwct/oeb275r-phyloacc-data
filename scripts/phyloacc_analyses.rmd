@@ -29,18 +29,392 @@ Outline:
 
 
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+```{r setup, warning=FALSE, message=FALSE}
+install_load <- function (pkg_vec){
+  for(pkg in pkg_vec){
+    if(!pkg %in% rownames(installed.packages())){
+      install.packages(pkg)
+    }
+    do.call("library", list(pkg))
+  } 
+}
+# Function to check for required packages and install and load
+# them as necessary
+
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+# RMarkdown options
+
+packages = c("ggplot2", "dplyr", "cowplot", "ggtree", "ggExtra", "stringr", "kableExtra", "viridis", "here")
+install_load(packages)
+# The packages to load
+
+source(here("scripts", "lib", "design.r"))
+source(here("scripts", "lib", "get_tree_info.r"))
+# Some custom libraries
+
 ```
 
-## R Markdown
+```{r read-files, out.width="75%", fig.align = "center", warning=FALSE}
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+tree_file = here("data", "mammal", "mammal.tre")
+tree = read.tree(file=tree_file)
+tree_to_df_list = treeToDF(tree)
+tree_info = tree_to_df_list[["info"]]
+# The mammal tree
 
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+st_result_file = here("data", "mammal", "st-test-branches", "results", "elem_lik.txt")
+st_results = read.csv(st_result_file, header=T, sep="\t", comment.char="#")
+# PhyloAcc results from the species tree run
 
-```{r cars}
-summary(cars)
+gt_result_file = here("data", "mammal", "gt-test-branches", "results", "elem_lik.txt")
+gt_results = read.csv(gt_result_file, header=T, sep="\t", comment.char="#")
+# PhyloAcc results from the gene tree run
+
+```
+
+## MM Tree
+
+```{r species-tree-scf, out.width="50%", fig.align = "center", warning=FALSE, fig.height=8}
+h = corecol(numcol=1, pal="wilke", offset=3)
+l = corecol(numcol=1, offset=3)
+# Colors
+
+mm_branches = c("turTru2", "orcOrc1", "turTru2-orcOrc1", "odoRosDiv1", "lepWed1", "odoRosDiv1-lepWed1", "triMan1")
+tree_info$mm = ifelse(tree_info$label %in% mm_branches, "Y", "N")
+
+mm_tree = ggtree(tree, size=0.8, ladderize=F, aes(color=tree_info$mm)) +
+  geom_tiplab(color="#333333", size=4) +
+  scale_color_manual(name="Target lineages", values=c("#666666", corecol(numcol=1))) +
+  geom_text(aes(x=branch, label=ifelse(tree_info$node.type=="internal" & tree_info$mm=="Y", tree_info$label, '')), size=3, vjust=-0.3, show.legend=F) +
+  theme(legend.position="none")
+print(mm_tree)
+
+```
+
+
+## BFS
+
+```{r bf1-bf2-st, out.width="75%", fig.align = "center", warning=FALSE}
+
+logbf1_cutoff = 4
+logbf2_cutoff = 4
+
+st_results$target.acc = ifelse(st_results$logbf1 > logbf1_cutoff & st_results$logbf2 > logbf2_cutoff, "Y", "N")
+# Label elements with BF1 > 4 and BF2 > 4, this is equivalent to selecting elements
+# with "M1" in the best.fit.model column
+
+num_m1 = nrow(subset(st_results, target.acc=="Y"))
+
+bf_spread_st = ggplot(st_results, aes(x=logbf1, y=logbf2, color=target.acc)) +
+  geom_point(size=2, alpha=0.25) +
+  geom_vline(xintercept=logbf1_cutoff, size=0.75, linetype="dotted", color="#999999") +
+  geom_hline(yintercept=logbf1_cutoff, size=0.75, linetype="dotted", color="#999999") +
+  ggtitle(paste(num_m1, " elements accelerated in\nmarine mammal lineages (ST)", sep="")) +
+  xlab("log BF1") +
+  ylab("log BF2") +
+  scale_color_manual(values=corecol(pal="wilke", numcol=2)) +
+  bartheme() +
+  theme(legend.position="none")
+bf_spread_st = ggExtra::ggMarginal(bf_spread_st, type="histogram", bins=50, fill=corecol(pal="wilke", numcol=1, offset=4), color="#666666")
+print(bf_spread_st)
+
+```
+
+## Tree/rate comps
+
+```{r accel-counts-st-m1, out.width="50%", fig.align = "center", warning=FALSE, fig.height=8}
+
+st_results_m1 = subset(st_results, best.fit.model=="M1")
+m1_locus = sample_n(st_results_m1, 1)
+m1_locus = subset(st_results, phyloacc.id=="3-24")
+
+#68-5
+#48-1
+#3-24
+
+#m1_locus = subset(st_results, logbf1 > 75 & logbf2 > 10)
+cur_con = strsplit(m1_locus$conserved.lineages.m2, split=",")[[1]]
+cur_acc = strsplit(m1_locus$accel.lineages.m2, split=",")[[1]]
+
+#m1_tree_info = subset(tree_info, node.type!="ROOT")
+m1_tree_info = tree_info
+
+m1_tree_info$state = "background"
+m1_tree_info[m1_tree_info$label %in% cur_acc,]$state = "accelerated"
+m1_tree_info[m1_tree_info$label %in% cur_con,]$state = "conserved"
+  
+ #ifelse(m1_tree_info$label %in% cur_acc, "Y", "N")
+
+m1_tree_info$m1.bl = m1_tree_info$branch.length
+m1_tree_info[m1_tree_info$label %in% cur_con,]$m1.bl = m1_tree_info[m1_tree_info$label %in% cur_con,]$m1.bl * m1_locus$conserved.rate.m2
+m1_tree_info[m1_tree_info$label %in% cur_acc,]$m1.bl = m1_tree_info[m1_tree_info$label %in% cur_acc,]$m1.bl * m1_locus$accel.rate.m2
+
+m1_tree = tree
+
+
+for(i in 1:length(m1_tree$edge.length)){
+  cur_len = m1_tree$edge.length[i]
+  cur_len = format(round(cur_len, 8), nsmall=8)
+
+  if(m1_tree_info[format(round(m1_tree_info$branch.length,8), nsmall=8)==cur_len,]$state == "background"){
+    #print(m1_tree_info[format(round(m1_tree_info$branch.length,8), nsmall=8)==cur_len,]$label)
+    next
+  }
+  
+  m1_tree$edge.length[i] = m1_tree_info[format(round(m1_tree_info$branch.length,8), nsmall=8)==cur_len,]$m1.bl
+  
+}
+
+
+cols = c("background"="#666666", "conserved"=corecol(numcol=1, pal="wilke", offset=1), "accelerated"=corecol(numcol=1, pal="wilke"))
+
+
+mm_tree = ggtree(m1_tree, size=0.8, ladderize=F, aes(color=m1_tree_info$state)) +
+  geom_tiplab(color="#333333", size=4) +
+  scale_color_manual(name="Rate states", values=cols) +
+  #geom_text(aes(x=branch, label=ifelse(tree_info$node.type=="internal" & tree_info$mm=="Y", tree_info$label, '')), size=3, vjust=-0.3, show.legend=F) +
+  theme(legend.position="bottom")
+print(mm_tree)
+
+```
+
+```{r accel-counts-st-m2, out.width="50%", fig.align = "center", warning=FALSE, fig.height=8}
+
+st_results_m2 = subset(st_results, best.fit.model=="M2")
+m2_locus = sample_n(st_results_m2, 1)
+#m2_locus = subset(st_results, phyloacc.id=="3-24")
+
+#3-5
+
+cur_con = strsplit(m2_locus$conserved.lineages.m2, split=",")[[1]]
+cur_acc = strsplit(m2_locus$accel.lineages.m2, split=",")[[1]]
+
+
+m2_tree_info = tree_info
+
+m2_tree_info$state = "background"
+m2_tree_info[m2_tree_info$label %in% cur_acc,]$state = "accelerated"
+m2_tree_info[m2_tree_info$label %in% cur_con,]$state = "conserved"
+  
+
+
+m2_tree_info$m2.bl = m2_tree_info$branch.length
+m2_tree_info[m2_tree_info$label %in% cur_con,]$m2.bl = m2_tree_info[m2_tree_info$label %in% cur_con,]$m2.bl * m2_locus$conserved.rate.m2
+m2_tree_info[m2_tree_info$label %in% cur_acc,]$m2.bl = m2_tree_info[m2_tree_info$label %in% cur_acc,]$m2.bl * m2_locus$accel.rate.m2
+
+m2_tree = tree
+
+
+for(i in 1:length(m2_tree$edge.length)){
+  cur_len = m2_tree$edge.length[i]
+  cur_len = format(round(cur_len, 8), nsmall=8)
+
+  if(m2_tree_info[format(round(m2_tree_info$branch.length,8), nsmall=8)==cur_len,]$state == "background"){
+    #print(m1_tree_info[format(round(m1_tree_info$branch.length,8), nsmall=8)==cur_len,]$label)
+    next
+  }
+  
+  m2_tree$edge.length[i] = m2_tree_info[format(round(m2_tree_info$branch.length,8), nsmall=8)==cur_len,]$m2.bl
+  
+}
+
+
+cols = c("background"="#666666", "conserved"=corecol(numcol=1, pal="wilke", offset=1), "accelerated"=corecol(numcol=1, pal="wilke"))
+
+
+mm_tree = ggtree(m2_tree, size=0.8, ladderize=F, aes(color=m2_tree_info$state)) +
+  geom_tiplab(color="#333333", size=4) +
+  scale_color_manual(name="Rate states", values=cols) +
+  #geom_text(aes(x=branch, label=ifelse(tree_info$node.type=="internal" & tree_info$mm=="Y", tree_info$label, '')), size=3, vjust=-0.3, show.legend=F) +
+  theme(legend.position="bottom")
+print(mm_tree)
+
+```
+
+
+## M1 branch counts
+
+```{r accel-counts-st-m1, out.width="50%", fig.align = "center", warning=FALSE, fig.height=8}
+
+st_results_m1 = subset(st_results, best.fit.model=="M1")
+
+mm_branch_count = data.frame("branch"=mm_branches, "count"=0)
+
+tree_info$st.count = 0
+
+for(i in 1:nrow(st_results_m1)){
+  accel_lineages = st_results_m1[i,]$accel.lineages.m1
+  accel_lineages = strsplit(accel_lineages, split=",")[[1]]
+  for(lineage in accel_lineages){
+    tree_info[tree_info$label==lineage,]$st.count = tree_info[tree_info$label==lineage,]$st.count + 1
+  }
+}
+
+mm_branch_counts = select(subset(tree_info, st.count > 0), label, st.count)
+names(mm_branch_counts) = c("branch", "# accelerated elements")
+
+tree_info[tree_info$st.count==0,]$st.count = NA
+
+h = corecol(numcol=1, pal="wilke", offset=3)
+l = corecol(numcol=1, offset=3)
+# Colors
+
+mm_tree = ggtree(tree, size=0.8, ladderize=F, aes(color=tree_info$st.count)) +
+  geom_tiplab(color="#333333", size=4) +
+  scale_color_continuous(name='gCF', low=l, high=h) +
+  #scale_color_manual(name="Target lineages", values=c("#666666", corecol(numcol=1))) +
+  #geom_text(aes(x=branch, label=ifelse(tree_info$node.type=="internal" & tree_info$mm=="Y", tree_info$label, '')), size=3, vjust=-0.3, show.legend=F) +
+  theme(legend.position="none")
+print(mm_tree)
+
+mm_branch_counts %>% kable(row.names=F) %>% kable_styling(bootstrap_options=c("striped", "condended", "responsive"), full_width=F)
+
+
+```
+
+## M2 branch counts
+
+```{r accel-counts-st-m2, out.width="50%", fig.align = "center", warning=FALSE, fig.height=8}
+
+logbf3_cutoff = 4
+
+st_results_m2 = subset(st_results, logbf1 > logbf1_cutoff || logbf3 > logbf3_cutoff)
+
+tree_info$st.m2.count = 0
+
+for(i in 1:nrow(st_results_m2)){
+  accel_lineages = st_results_m2[i,]$accel.lineages.m2
+  accel_lineages = strsplit(accel_lineages, split=",")[[1]]
+  for(lineage in accel_lineages){
+    tree_info[tree_info$label==lineage,]$st.m2.count = tree_info[tree_info$label==lineage,]$st.m2.count + 1
+  }
+}
+
+#mm_branch_counts = select(subset(tree_info, st.count > 0), label, st.count)
+#names(mm_branch_counts) = c("branch", "# accelerated elements")
+
+#tree_info[tree_info$st.count==0,]$st.count = NA
+
+h = corecol(numcol=1, pal="wilke", offset=3)
+l = corecol(numcol=1, offset=3)
+# Colors
+
+mm_tree = ggtree(tree, size=0.8, ladderize=F, aes(color=tree_info$st.m2.count)) +
+  geom_tiplab(color="#333333", size=4) +
+  scale_color_viridis(name='gCF', option = "C") +
+  #scale_color_manual(name="Target lineages", values=c("#666666", corecol(numcol=1))) +
+  #geom_text(aes(x=branch, label=ifelse(tree_info$node.type=="internal" & tree_info$mm=="Y", tree_info$label, '')), size=3, vjust=-0.3, show.legend=F) +
+  theme(legend.position="none")
+print(mm_tree)
+
+#mm_branch_counts %>% kable(row.names=F) %>% kable_styling(bootstrap_options=c("striped", "condended", "responsive"), full_width=F)
+
+
+```
+
+
+
+
+## Ancestral mm accelerations
+
+```{r anc-target-accel-st, out.width="75%", fig.align = "center", warning=FALSE}
+
+mm_anc_branches = c("turTru2-orcOrc1", "odoRosDiv1-lepWed1", "triMan1")
+st_results_m1 = subset(st_results, best.fit.model=="M1")
+st_results_mm_anc = data.frame()
+
+for(i in 1:nrow(st_results_m1)){
+  accel_lineages = st_results_m1[i,]$accel.lineages.m1
+  accel_lineages = strsplit(accel_lineages, split=",")[[1]]
+  accel_anc_lineages = intersect(accel_lineages, mm_anc_branches)
+  
+  if(setequal(accel_anc_lineages, mm_anc_branches)){
+    st_results_mm_anc = rbind(st_results_mm_anc, st_results_m1[i,])
+  }
+}
+
+
+
+st_results_mm_anc %>% kable() %>% kable_styling(bootstrap_options=c("striped", "condended", "responsive"), full_width=F)
+
+
+```
+
+## Control Tree
+
+```{r species-tree-scf, out.width="50%", fig.align = "center", warning=FALSE, fig.height=8}
+h = corecol(numcol=1, pal="wilke", offset=3)
+l = corecol(numcol=1, offset=3)
+# Colors
+
+control_branches = c("ailMel1", "loxAfr1", "eleEdw1", "loxAfr3-eleEdw1", "oviAri3", "capHir1", "oviAri3-capHir1", "bosTau8", "bosTau8-oviAri3", "panHod1", "bosTau8-oviAri3", "panHod1-bosTau8")
+
+tree_info$control = "N"
+tree_info[tree_info$label %in% control_branches,]$control = "control"
+tree_info[tree_info$label %in% mm_branches,]$control = "mm"
+
+#tree_info$control = ifelse(tree_info$label %in% control_branches, "Y", "N")
+
+control_tree = ggtree(tree, size=0.8, ladderize=F, aes(color=tree_info$control)) +
+  geom_tiplab(color="#333333", size=4) +
+  scale_color_manual(name="Control lineages", values=c("N"="#666666", "mm"=corecol(numcol=1), "control"=corecol(numcol=1, offset=5))) +
+  geom_text(aes(x=branch, label=ifelse(tree_info$node.type=="internal" & tree_info$control!="N", tree_info$label, '')), size=3, vjust=-0.3, show.legend=F) +
+  theme(legend.position="none")
+print(control_tree)
+
+```
+
+```{r anc-control-accel-st, out.width="75%", fig.align = "center", warning=FALSE}
+
+control_anc_branches = c("loxAfr3-eleEdw1", "panHod1-bosTau8", "ailMel1")
+st_results_m2 = subset(st_results, best.fit.model=="M2")
+st_results_control_anc = data.frame()
+
+for(i in 1:nrow(st_results_m2)){
+  accel_lineages = st_results_m2[i,]$accel.lineages.m2
+  accel_lineages = strsplit(accel_lineages, split=",")[[1]]
+  accel_anc_lineages = intersect(accel_lineages, control_anc_branches)
+  
+  if(setequal(accel_anc_lineages, control_anc_branches)){
+    st_results_control_anc = rbind(st_results_control_anc, st_results_m2[i,])
+
+  }
+
+}
+
+
+
+
+
+
+```
+
+
+
+```{r bf1-bf2-gt, out.width="75%", fig.align = "center", warning=FALSE}
+
+logbf1_cutoff = 2
+logbf2_cutoff = 2
+
+gt_results$target.acc = ifelse(gt_results$logbf1 > logbf1_cutoff & gt_results$logbf2 > logbf2_cutoff, "Y", "N")
+# Label elements with BF1 > 4 and BF2 > 4, this is equivalent to selecting elements
+# with "M1" in the best.fit.model column
+
+num_m1 = nrow(subset(gt_results, target.acc=="Y"))
+
+bf_spread_gt = ggplot(gt_results, aes(x=logbf1, y=logbf2, color=target.acc)) +
+  geom_point(size=2, alpha=0.25) +
+  geom_vline(xintercept=logbf1_cutoff, size=0.75, linetype="dotted", color="#999999") +
+  geom_hline(yintercept=logbf1_cutoff, size=0.75, linetype="dotted", color="#999999") +
+  ggtitle(paste(num_m1, " elements accelerated in\nmarine mammal lineages (GT)", sep="")) +
+  xlab("log BF1") +
+  ylab("log BF2") +
+  scale_color_manual(values=corecol(pal="wilke", numcol=2)) +
+  bartheme() +
+  theme(legend.position="none")
+bf_spread_gt = ggExtra::ggMarginal(bf_spread_gt, type="histogram", bins=50, fill=corecol(pal="wilke", numcol=1, offset=4), color="#666666")
+print(bf_spread_gt)
+
 ```
 
 ## Including Plots
