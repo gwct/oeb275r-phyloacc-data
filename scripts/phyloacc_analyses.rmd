@@ -27,7 +27,11 @@ Outline:
 11. Tree/description of some elements?
 12. Overlap between st and gt accelerated elements.
 
+# Setup
 
+Run the two blocks below to setup the Rmarkdown script. The first block (setup) installs and loads the required libraries. The second block (read-files) reads all the data we're going to be analyzing into data frames.
+
+To run chunks, either click on the green triangle icon in the upper right hand corner of the chunk, or select the chunk by clicking inside of it and then hitting CTRL+SHIFT+ENTER.
 
 ```{r setup, warning=FALSE, message=FALSE}
 install_load <- function (pkg_vec){
@@ -44,7 +48,7 @@ install_load <- function (pkg_vec){
 knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
 # RMarkdown options
 
-packages = c("ggplot2", "dplyr", "cowplot", "ggtree", "ggExtra", "stringr", "kableExtra", "viridis", "here")
+packages = c("ggplot2", "dplyr", "tidyr", "cowplot", "ggtree", "ggExtra", "stringr", "kableExtra", "viridis", "here")
 install_load(packages)
 # The packages to load
 
@@ -56,59 +60,125 @@ source(here("scripts", "lib", "get_tree_info.r"))
 
 ```{r read-files, out.width="75%", fig.align = "center", warning=FALSE}
 
-tree_file = here("data", "mammal", "mammal.tre")
+tree_file = here("data", "mammal.tre")
 tree = read.tree(file=tree_file)
 tree_to_df_list = treeToDF(tree)
 tree_info = tree_to_df_list[["info"]]
 # The mammal tree
 
-st_result_file = here("data", "mammal", "st-test-branches", "results", "elem_lik.txt")
+scf_tree_file = here("data", "phyloacc-scf.tre")
+scf_tree = read.tree(file=scf_tree_file)
+tree_to_df_list = treeToDF(scf_tree)
+scf_tree_info = tree_to_df_list[["info"]]
+scf_tree_info = scf_tree_info %>% separate(label, c("tp", "scf", "orig.label"), sep="_", remove=T)
+scf_tree_info[scf_tree_info$tp=="<60>",]$orig.label = scf_tree_info[scf_tree_info$tp=="<60>",]$scf
+scf_tree_info[scf_tree_info$tp=="<60>",]$scf = NA
+scf_tree_info$scf = as.numeric(scf_tree_info$scf)
+# The tree with sCF labels
+
+aln_stats_file = here("data", "phyloacc-aln-stats.csv")
+aln_stats = read.csv(aln_stats_file, header=T)
+# Alignment stats for each locus, including average site concordance factors (sCF)
+
+st_result_file = here("data", "st-test-branches", "results", "elem_lik.txt")
 st_results = read.csv(st_result_file, header=T, sep="\t", comment.char="#")
 # PhyloAcc results from the species tree run
 
-gt_result_file = here("data", "mammal", "gt-test-branches", "results", "elem_lik.txt")
+gt_result_file = here("data", "gt-test-branches", "results", "elem_lik.txt")
 gt_results = read.csv(gt_result_file, header=T, sep="\t", comment.char="#")
 # PhyloAcc results from the gene tree run
 
 ```
 
-## MM Tree
 
-```{r species-tree-scf, out.width="50%", fig.align = "center", warning=FALSE, fig.height=8}
-h = corecol(numcol=1, pal="wilke", offset=3)
-l = corecol(numcol=1, offset=3)
-# Colors
+# Mammal species tree
+
+So, we've run PhyloAcc on our mammal data, specifying marine mammal lineages as targets for M1. PhyloAcc has calculated the probability of M0 (no acceleration), M1 (acceleration on target branches only), and M2 (acceleration on any branch) and now we get to see the results!
+
+This data consists of ~2,000 conserved non-coding regions among 62 mammal species. 
+
+Run the chunk below to display the species tree for these mammals as inferred by the team from the UCSC genome browser:
+
+```{r species-tree-mm, out.width="50%", fig.align = "center", warning=FALSE, fig.height=8, fig.width=10}
 
 mm_branches = c("turTru2", "orcOrc1", "turTru2-orcOrc1", "odoRosDiv1", "lepWed1", "odoRosDiv1-lepWed1", "triMan1")
 tree_info$mm = ifelse(tree_info$label %in% mm_branches, "Y", "N")
+# A list of the marine mammal lineages to color and label them them in the tree
 
 mm_tree = ggtree(tree, size=0.8, ladderize=F, aes(color=tree_info$mm)) +
   geom_tiplab(color="#333333", size=4) +
   scale_color_manual(name="Target lineages", values=c("#666666", corecol(numcol=1))) +
   geom_text(aes(x=branch, label=ifelse(tree_info$node.type=="internal" & tree_info$mm=="Y", tree_info$label, '')), size=3, vjust=-0.3, show.legend=F) +
   theme(legend.position="none")
+# Render the tree with ggtree
+
 print(mm_tree)
+# Display the tree
 
 ```
 
+# PhyloAcc output
 
-## BFS
+So what does the output of PhyloAcc look like? There are several files produced, including matrices of rates and conservation states. Previously the elem_lik.txt file contained the likelihood and Bayes factors for each of the three models for each locus. In the latest version, I've tried to summarize a lot of the important data into a single table in this file. We read that file into a data frame above, let's take a look at its contents here by running the chunk below (note that best.fit.model based on Bayes factor cutoffs of 4): 
+
+```{r results-table-st, fig.align="center", warning=FALSE, fig.height=8}
+
+st_results_display = head(st_results, n=20)
+st_results_display %>% kable(row.names=F) %>% kable_styling(bootstrap_options=c("striped", "condended", "responsive"), full_width=F)
+# Subset the table and display
+
+```
+We can also summarize some interesting statistics about this table with the following chunk:
+
+```{r results-summary-scf, fig.align="center", warning=FALSE, fig.height=8}
+
+st_results_summary = data.frame(
+  "num.m0" = nrow(subset(st_results, best.fit.model == "M0")),
+  "num.m1" = nrow(subset(st_results, best.fit.model == "M1")),
+  "num.m2" = nrow(subset(st_results, best.fit.model == "M2")),
+  'avg.accel.lineages.m2' = mean(st_results$num.accel.m2)
+)
+
+st_results_summary %>% kable(row.names=F) %>% kable_styling(bootstrap_options=c("striped", "condended", "responsive"), full_width=F)
+
+```
+
+# Bayes Factors
+
+So, the measure of support we're using when comparing models is the Bayes factor. A Bayes factor is simply a ratio of the marginal probabilities of two models. If the Bayes factor is skewed enough away from 1, it may indicate support for one model over the other.
+
+For example, if we want to know if the model that allows accelerated rates on the target lineages (M1) fits the data better than the model that does not allow accelerated rates on any branch (M0), we would calculate:
+
+$$BF1 = \frac{P(Y | M1)}{P(Y | M0)}$$
+
+Where $Y$ is the data (aligned sequences) and $M*$ is the model. As you can see, this is BF1 and is calculated in the main output table. We can also compare the model that allows acclerated rates to be fit to only the target lineages (M1) to a model that allows accelerated rates on any lineage (M2):
+
+$$BF2 = \frac{P(Y | M1)}{P(Y | M2)}$$
+
+This is BF2 and if it is above 1 it indicates more support for M1 than M2 given the data.
+
+If both BF1 and BF2 are high enough (above some threshold or cutoff), then we would say that M1 best fits the data and these would be the loci that likely have accelerated substitution rates exclusively in our target lineages.
+
+Well, what does this look like? What are the distributions of BF1 and BF2 in our data, and how many loci do we find fit M1 best using BF cutoffs of 4? Run the chunk below to display the distributions:
 
 ```{r bf1-bf2-st, out.width="75%", fig.align = "center", warning=FALSE}
 
-logbf1_cutoff = 4
+logbf1_cutoff = 10
 logbf2_cutoff = 4
+# Bayes factor cutoffs
+# If you want, change these values and re-run the block to see how it affects the results
 
 st_results$target.acc = ifelse(st_results$logbf1 > logbf1_cutoff & st_results$logbf2 > logbf2_cutoff, "Y", "N")
 # Label elements with BF1 > 4 and BF2 > 4, this is equivalent to selecting elements
 # with "M1" in the best.fit.model column
 
 num_m1 = nrow(subset(st_results, target.acc=="Y"))
+# Count the number of M1 elements
 
 bf_spread_st = ggplot(st_results, aes(x=logbf1, y=logbf2, color=target.acc)) +
   geom_point(size=2, alpha=0.25) +
   geom_vline(xintercept=logbf1_cutoff, size=0.75, linetype="dotted", color="#999999") +
-  geom_hline(yintercept=logbf1_cutoff, size=0.75, linetype="dotted", color="#999999") +
+  geom_hline(yintercept=logbf2_cutoff, size=0.75, linetype="dotted", color="#999999") +
   ggtitle(paste(num_m1, " elements accelerated in\nmarine mammal lineages (ST)", sep="")) +
   xlab("log BF1") +
   ylab("log BF2") +
@@ -116,313 +186,685 @@ bf_spread_st = ggplot(st_results, aes(x=logbf1, y=logbf2, color=target.acc)) +
   bartheme() +
   theme(legend.position="none")
 bf_spread_st = ggExtra::ggMarginal(bf_spread_st, type="histogram", bins=50, fill=corecol(pal="wilke", numcol=1, offset=4), color="#666666")
+# Render the BF figure with ggplot
+
 print(bf_spread_st)
-
+# Display the figure
 ```
 
-## Tree/rate comps
+On the x-axis we have the distribution of BF1, which compares M1 to M0. Dots further on the left show more support for M0 while dots to the right show more support for M1. The y-axis shows BF2. Dots towards the top show more support for M1 and dots towards the bottom show support for M2. We also show the distributions of each BF on the opposite axis and place lines at our cutoffs for each BF. Any locus above both the BF1 and BF2 cutoffs are shown in blue. These are the ones we would consider to be accelerated in marine mammal lineages.
 
-```{r accel-counts-st-m1, out.width="50%", fig.align = "center", warning=FALSE, fig.height=8}
+With these cutoffs, we count 784 out of our 2000 elements being accelerated for marine mammals. That is a lot, but please remember this is NOT a random sampling of loci. This sample includes many of the elements originally found to be accelerated in marine mammals and the total dataset has over 200,000 elements.
 
-st_results_m1 = subset(st_results, best.fit.model=="M1")
-m1_locus = sample_n(st_results_m1, 1)
-m1_locus = subset(st_results, phyloacc.id=="3-24")
+And also remember we are still working with loci run with the species tree model, so phylogenetic discordance has not been accounted for.
 
-#68-5
-#48-1
-#3-24
+# Substitution rates
 
-#m1_locus = subset(st_results, logbf1 > 75 & logbf2 > 10)
-cur_con = strsplit(m1_locus$conserved.lineages.m2, split=",")[[1]]
-cur_acc = strsplit(m1_locus$accel.lineages.m2, split=",")[[1]]
+So what do the different models look like in terms of substitution rates? Below we'll take a look at rates represented as branch lengths on the species tree, so longer branches mean higher substitution rates. We'll look at two loci: one where M1 best fits the data and one where M2 best fits the data. For the locus that best fits M1, we'll look at both the M1 and M2 fits to get an intuition for what PhyloAcc is doing. Run the block below to generate the trees:
 
-#m1_tree_info = subset(tree_info, node.type!="ROOT")
-m1_tree_info = tree_info
+```{r tree-comps-st, out.width="50%", fig.align = "center", warning=FALSE, fig.width=12, fig.height=16}
 
-m1_tree_info$state = "background"
-m1_tree_info[m1_tree_info$label %in% cur_acc,]$state = "accelerated"
-m1_tree_info[m1_tree_info$label %in% cur_con,]$state = "conserved"
+#st_results_m1 = subset(st_results, best.fit.model=="M1")
+#m1_locus = sample_n(st_results_m1, 1)
+# This randomly selects an M1 locus
+
+m1_locus = subset(st_results, phyloacc.id=="73-15")
+# Select an M1 locus as an example. Other good ones are: 68-5, 48-1, 3-24, 73-15
+
+#st_results_m2 = subset(st_results, best.fit.model=="M2")
+#m2_locus = sample_n(st_results_m2, 1)
+# This randomly selects an M2 locus
+
+m2_locus = subset(st_results, phyloacc.id=="56-13")
+# Select an M1 locus as an example. Other good ones are: 3-24, 3-5, 56-13
+
+con_m1_m1 = strsplit(m1_locus$conserved.lineages.m1, split=",")[[1]]
+acc_m1_m1 = strsplit(m1_locus$accel.lineages.m1, split=",")[[1]]
+con_m1_m2 = strsplit(m1_locus$conserved.lineages.m2, split=",")[[1]]
+acc_m1_m2 = strsplit(m1_locus$accel.lineages.m2, split=",")[[1]]
+con_m2_m2 = strsplit(m2_locus$conserved.lineages.m2, split=",")[[1]]
+acc_m2_m2 = strsplit(m2_locus$accel.lineages.m2, split=",")[[1]]
+# Split the lineages in each state for both M1 and M2 into vectors
+
+tree_info$m1m1.state = "background"
+tree_info[tree_info$label %in% acc_m1_m1,]$m1m1.state = "accelerated"
+tree_info[tree_info$label %in% con_m1_m1,]$m1m1.state = "conserved"
+# M1 LOCUS: Label each branch in the tree as background, accelerated, or conserved for M1
   
- #ifelse(m1_tree_info$label %in% cur_acc, "Y", "N")
+tree_info$m1m2.state = "background"
+tree_info[tree_info$label %in% acc_m1_m2,]$m1m2.state = "accelerated"
+tree_info[tree_info$label %in% con_m1_m2,]$m1m2.state = "conserved"
+# M1 LOCUS:  Label each branch in the tree as background, accelerated, or conserved for M2
 
-m1_tree_info$m1.bl = m1_tree_info$branch.length
-m1_tree_info[m1_tree_info$label %in% cur_con,]$m1.bl = m1_tree_info[m1_tree_info$label %in% cur_con,]$m1.bl * m1_locus$conserved.rate.m2
-m1_tree_info[m1_tree_info$label %in% cur_acc,]$m1.bl = m1_tree_info[m1_tree_info$label %in% cur_acc,]$m1.bl * m1_locus$accel.rate.m2
+tree_info$m2m2.state = "background"
+tree_info[tree_info$label %in% acc_m2_m2,]$m2m2.state = "accelerated"
+tree_info[tree_info$label %in% con_m2_m2,]$m2m2.state = "conserved"
+# M2 LOCUS:  Label each branch in the tree as background, accelerated, or conserved for M2
 
-m1_tree = tree
+tree_info$m1m1.bl = tree_info$branch.length
+tree_info[tree_info$label %in% con_m1_m1,]$m1m1.bl = tree_info[tree_info$label %in% con_m1_m1,]$m1m1.bl * m1_locus$conserved.rate.m1
+tree_info[tree_info$label %in% acc_m1_m1,]$m1m1.bl = tree_info[tree_info$label %in% acc_m1_m1,]$m1m1.bl * m1_locus$accel.rate.m1
+# M1 LOCUS:  Adjust branch lengths based on the substitution rates in M1
 
+tree_info$m1m2.bl = tree_info$branch.length
+tree_info[tree_info$label %in% con_m1_m2,]$m1m2.bl = tree_info[tree_info$label %in% con_m1_m2,]$m1m2.bl * m1_locus$conserved.rate.m2
+tree_info[tree_info$label %in% acc_m1_m2,]$m1m2.bl = tree_info[tree_info$label %in% acc_m1_m2,]$m1m2.bl * m1_locus$accel.rate.m2
+# M1 LOCUS:  Adjust branch lengths based on the substitution rates in M2
 
-for(i in 1:length(m1_tree$edge.length)){
-  cur_len = m1_tree$edge.length[i]
+tree_info$m2m2.bl = tree_info$branch.length
+tree_info[tree_info$label %in% con_m2_m2,]$m2m2.bl = tree_info[tree_info$label %in% con_m2_m2,]$m2m2.bl * m1_locus$conserved.rate.m2
+tree_info[tree_info$label %in% acc_m2_m2,]$m2m2.bl = tree_info[tree_info$label %in% acc_m2_m2,]$m2m2.bl * m1_locus$accel.rate.m2
+# M2 LOCUS:  Adjust branch lengths based on the substitution rates in M2
+
+m1_m1_tree = tree
+m1_m2_tree = tree
+m2_m2_tree = tree
+# Copy the tree here since we're editing it
+
+for(i in 1:length(tree$edge.length)){
+  cur_len = tree$edge.length[i]
   cur_len = format(round(cur_len, 8), nsmall=8)
-
-  if(m1_tree_info[format(round(m1_tree_info$branch.length,8), nsmall=8)==cur_len,]$state == "background"){
-    #print(m1_tree_info[format(round(m1_tree_info$branch.length,8), nsmall=8)==cur_len,]$label)
-    next
+  # Get the original length for this branch and convert it to a rounded string
+  
+  if(!tree_info[format(round(tree_info$branch.length,8), nsmall=8)==cur_len,]$m1m1.state == "background"){
+    m1_m1_tree$edge.length[i] = tree_info[format(round(tree_info$branch.length,8), nsmall=8)==cur_len,]$m1m1.bl
   }
+  # M1 LOCUS: If this branch is not in the background state in M1, adjust the branch length here
   
-  m1_tree$edge.length[i] = m1_tree_info[format(round(m1_tree_info$branch.length,8), nsmall=8)==cur_len,]$m1.bl
+  if(!tree_info[format(round(tree_info$branch.length,8), nsmall=8)==cur_len,]$m1m2.state == "background"){
+    m1_m2_tree$edge.length[i] = tree_info[format(round(tree_info$branch.length,8), nsmall=8)==cur_len,]$m1m2.bl
+  }
+  # M1 LOCUS: If this branch is not in the background state in M2, adjust the branch length here  
   
+  if(!tree_info[format(round(tree_info$branch.length,8), nsmall=8)==cur_len,]$m2m2.state == "background"){
+    m2_m2_tree$edge.length[i] = tree_info[format(round(tree_info$branch.length,8), nsmall=8)==cur_len,]$m2m2.bl
+  }
+  # M2 LOCUS: If this branch is not in the background state in M2, adjust the branch length here  
 }
+# Loop over every branch in the tree and adjust the branch length based on the state in the model
 
+####################
 
 cols = c("background"="#666666", "conserved"=corecol(numcol=1, pal="wilke", offset=1), "accelerated"=corecol(numcol=1, pal="wilke"))
+# Set colors for conservation states
 
-
-mm_tree = ggtree(m1_tree, size=0.8, ladderize=F, aes(color=m1_tree_info$state)) +
-  geom_tiplab(color="#333333", size=4) +
+cur_title = paste("Locus: ", m1_locus$original.id, " / Supported model: M1 / Displayed model: M1", sep="")
+xmax = max(nodeHeights(m1_m1_tree)) + sd(nodeHeights(m1_m1_tree))
+m1m1_tree_fig = ggtree(m1_m1_tree, size=0.8, ladderize=F, aes(color=tree_info$m1m1.state)) +
+  geom_tiplab(color="#333333", size=3.2) +
+  xlim(0, xmax) +
   scale_color_manual(name="Rate states", values=cols) +
   #geom_text(aes(x=branch, label=ifelse(tree_info$node.type=="internal" & tree_info$mm=="Y", tree_info$label, '')), size=3, vjust=-0.3, show.legend=F) +
-  theme(legend.position="bottom")
-print(mm_tree)
+  ggtitle(cur_title) +
+  theme(legend.position="bottom",
+        plot.margin=unit(c(1,1,1,1), "cm"))
+# M1 locus M1 model tree
 
-```
-
-```{r accel-counts-st-m2, out.width="50%", fig.align = "center", warning=FALSE, fig.height=8}
-
-st_results_m2 = subset(st_results, best.fit.model=="M2")
-m2_locus = sample_n(st_results_m2, 1)
-#m2_locus = subset(st_results, phyloacc.id=="3-24")
-
-#3-5
-
-cur_con = strsplit(m2_locus$conserved.lineages.m2, split=",")[[1]]
-cur_acc = strsplit(m2_locus$accel.lineages.m2, split=",")[[1]]
-
-
-m2_tree_info = tree_info
-
-m2_tree_info$state = "background"
-m2_tree_info[m2_tree_info$label %in% cur_acc,]$state = "accelerated"
-m2_tree_info[m2_tree_info$label %in% cur_con,]$state = "conserved"
-  
-
-
-m2_tree_info$m2.bl = m2_tree_info$branch.length
-m2_tree_info[m2_tree_info$label %in% cur_con,]$m2.bl = m2_tree_info[m2_tree_info$label %in% cur_con,]$m2.bl * m2_locus$conserved.rate.m2
-m2_tree_info[m2_tree_info$label %in% cur_acc,]$m2.bl = m2_tree_info[m2_tree_info$label %in% cur_acc,]$m2.bl * m2_locus$accel.rate.m2
-
-m2_tree = tree
-
-
-for(i in 1:length(m2_tree$edge.length)){
-  cur_len = m2_tree$edge.length[i]
-  cur_len = format(round(cur_len, 8), nsmall=8)
-
-  if(m2_tree_info[format(round(m2_tree_info$branch.length,8), nsmall=8)==cur_len,]$state == "background"){
-    #print(m1_tree_info[format(round(m1_tree_info$branch.length,8), nsmall=8)==cur_len,]$label)
-    next
-  }
-  
-  m2_tree$edge.length[i] = m2_tree_info[format(round(m2_tree_info$branch.length,8), nsmall=8)==cur_len,]$m2.bl
-  
-}
-
-
-cols = c("background"="#666666", "conserved"=corecol(numcol=1, pal="wilke", offset=1), "accelerated"=corecol(numcol=1, pal="wilke"))
-
-
-mm_tree = ggtree(m2_tree, size=0.8, ladderize=F, aes(color=m2_tree_info$state)) +
-  geom_tiplab(color="#333333", size=4) +
+cur_title = paste("Locus: ", m1_locus$original.id, " / Supported model: M1 / Displayed model: M2", sep="")
+xmax = max(nodeHeights(m1_m2_tree)) + sd(nodeHeights(m1_m2_tree))
+m1m2_tree_fig = ggtree(m1_m2_tree, size=0.8, ladderize=F, aes(color=tree_info$m1m2.state)) +
+  geom_tiplab(color="#333333", size=3.2) +
+  xlim(0, xmax) +
   scale_color_manual(name="Rate states", values=cols) +
   #geom_text(aes(x=branch, label=ifelse(tree_info$node.type=="internal" & tree_info$mm=="Y", tree_info$label, '')), size=3, vjust=-0.3, show.legend=F) +
-  theme(legend.position="bottom")
-print(mm_tree)
+  ggtitle(cur_title) +
+  theme(legend.position="bottom",
+        plot.margin=unit(c(1,1,1,1), "cm"))
+# M1 locus M2 model tree
 
-```
-
-
-## M1 branch counts
-
-```{r accel-counts-st-m1, out.width="50%", fig.align = "center", warning=FALSE, fig.height=8}
-
-st_results_m1 = subset(st_results, best.fit.model=="M1")
-
-mm_branch_count = data.frame("branch"=mm_branches, "count"=0)
-
-tree_info$st.count = 0
-
-for(i in 1:nrow(st_results_m1)){
-  accel_lineages = st_results_m1[i,]$accel.lineages.m1
-  accel_lineages = strsplit(accel_lineages, split=",")[[1]]
-  for(lineage in accel_lineages){
-    tree_info[tree_info$label==lineage,]$st.count = tree_info[tree_info$label==lineage,]$st.count + 1
-  }
-}
-
-mm_branch_counts = select(subset(tree_info, st.count > 0), label, st.count)
-names(mm_branch_counts) = c("branch", "# accelerated elements")
-
-tree_info[tree_info$st.count==0,]$st.count = NA
-
-h = corecol(numcol=1, pal="wilke", offset=3)
-l = corecol(numcol=1, offset=3)
-# Colors
-
-mm_tree = ggtree(tree, size=0.8, ladderize=F, aes(color=tree_info$st.count)) +
-  geom_tiplab(color="#333333", size=4) +
-  scale_color_continuous(name='gCF', low=l, high=h) +
-  #scale_color_manual(name="Target lineages", values=c("#666666", corecol(numcol=1))) +
+cur_title = paste("Locus: ", m2_locus$original.id, " / Supported model: M2 / Displayed model: M2", sep="")
+xmax = max(nodeHeights(m2_m2_tree)) + sd(nodeHeights(m2_m2_tree))
+m2m2_tree_fig = ggtree(m2_m2_tree, size=0.8, ladderize=F, aes(color=tree_info$m2m2.state)) +
+  geom_tiplab(color="#333333", size=3.2) +
+  xlim(0, xmax) +
+  scale_color_manual(name="Rate states", values=cols) +
   #geom_text(aes(x=branch, label=ifelse(tree_info$node.type=="internal" & tree_info$mm=="Y", tree_info$label, '')), size=3, vjust=-0.3, show.legend=F) +
-  theme(legend.position="none")
-print(mm_tree)
+  ggtitle(cur_title) +
+  theme(legend.position="bottom",
+        plot.margin=unit(c(1,1,1,1), "cm"))
+# M2 locus M2 model tree
 
-mm_branch_counts %>% kable(row.names=F) %>% kable_styling(bootstrap_options=c("striped", "condended", "responsive"), full_width=F)
+tree_legend = get_legend(m1m1_tree_fig)
+# Get the legend from one fig
 
+m1_tree_fig = plot_grid(m1m1_tree_fig + theme(legend.position="none"),
+                     m1m2_tree_fig + theme(legend.position="none"),
+                     ncol=2)
+# Combine the M1 locus trees into a single row, removing individual legends
+
+m2_tree_fig = plot_grid(NULL, m2m2_tree_fig + theme(legend.position="none"), NULL, ncol=3, rel_widths=c(0.5,1,0.5))
+# Set a row with some padding for the M2 locus and remove its legend
+
+tree_fig = plot_grid(m1_tree_fig, m2_tree_fig, tree_legend, nrow=3, rel_heights=c(1,1,0.1))
+# Combine the M1 locus row, M2 locus row, and a single legend
+
+print(tree_fig)
+# Display the figure
 
 ```
 
-## M2 branch counts
+The top two rows show trees from the same locus with branches and conservation states under M1 (left) and M2 (right). The model that best fits this locus is M1. You can see that, when we allow acceleration on any branch with M2, many branches are inferred to be in the accelerated state, including all of the marine mammal branches. However, the probability of this model is lower than the probability of accelerations occurring only on marine mammal lineages, so we select that as the model for this locus and we can further investigate whether this element may play a role in the aquatic phenotype.
 
-```{r accel-counts-st-m2, out.width="50%", fig.align = "center", warning=FALSE, fig.height=8}
+Below we have an locus that best fits M2, free acceleration throughout the tree. Here you see that some of the marine mammal lineages are accelerated, but so are many others. Given that M2 best fits this locus we probably wouldn't think it is involved in aquatic lifestyles for mammals.
+
+And that brings up one of the biggest advantages of comparative genomics. We want to test whether certain changes at the molecular level play a role in adaptive phenotypes. So we can identify species with traits of interest and then perform functional experiments on them, but this is limited to a small set of model organisms. We can't perform those experiments with a lot of samples and different genomic and environmental backgrounds.
+
+But evolution has done the experiment for us. When we combine the genome sequences, trait data, and phylogenies we can test our hypotheses in the context of the tree, using branches without the trait of interest as a control.
+
+# Accelerated elements per branch with M2
+
+For example, we can count how many times each branch is inferred to be accelerated across all elements. For this we use a third Bayes factor:
+
+$$BF3 = \frac{P(Y | M2)}{P(Y | M0)}$$
+
+This tells us whether the full model (M2) that allows acceleration on any branch supports the data better than the model with no acceleration (M0). We can then look at all loci that contain some acceleration (M2) and compare counts between our branches of interest and the rest of the tree. Run the block below to make these counts:
+
+```{r accel-counts-st-m2, out.width="50%", fig.align = "center", warning=FALSE, fig.height=8, fig.width=8}
 
 logbf3_cutoff = 4
+# The cutoff value for BF3
 
-st_results_m2 = subset(st_results, logbf1 > logbf1_cutoff || logbf3 > logbf3_cutoff)
+st_results_m2 = subset(st_results, logbf3 > logbf3_cutoff)
+# Getting the loci that favor M2
 
 tree_info$st.m2.count = 0
-
 for(i in 1:nrow(st_results_m2)){
   accel_lineages = st_results_m2[i,]$accel.lineages.m2
   accel_lineages = strsplit(accel_lineages, split=",")[[1]]
+  # Split the accelerated lineages into a vector
+  
   for(lineage in accel_lineages){
     tree_info[tree_info$label==lineage,]$st.m2.count = tree_info[tree_info$label==lineage,]$st.m2.count + 1
   }
+  # Increment the counts for the accelerated lineages
 }
-
-#mm_branch_counts = select(subset(tree_info, st.count > 0), label, st.count)
-#names(mm_branch_counts) = c("branch", "# accelerated elements")
-
-#tree_info[tree_info$st.count==0,]$st.count = NA
+# Counting the number of times each branch is in the accelerated state for loci that favor M2
 
 h = corecol(numcol=1, pal="wilke", offset=3)
 l = corecol(numcol=1, offset=3)
 # Colors
 
-mm_tree = ggtree(tree, size=0.8, ladderize=F, aes(color=tree_info$st.m2.count)) +
+m2_count_tree = ggtree(tree, size=0.8, ladderize=F, aes(color=tree_info$st.m2.count)) +
   geom_tiplab(color="#333333", size=4) +
-  scale_color_viridis(name='gCF', option = "C") +
-  #scale_color_manual(name="Target lineages", values=c("#666666", corecol(numcol=1))) +
-  #geom_text(aes(x=branch, label=ifelse(tree_info$node.type=="internal" & tree_info$mm=="Y", tree_info$label, '')), size=3, vjust=-0.3, show.legend=F) +
-  theme(legend.position="none")
-print(mm_tree)
+  #scale_color_continuous(name='# of acclerated loci', low=l, high=h) +
+  scale_color_viridis(name='# of accelerated loci', option = "C") +
+  theme(legend.position=c(0.1,0.1))
+# Render the tree figure
 
-#mm_branch_counts %>% kable(row.names=F) %>% kable_styling(bootstrap_options=c("striped", "condended", "responsive"), full_width=F)
-
+print(m2_count_tree)
+# Display the tree figure
 
 ```
 
+Here, unsurprisingly given how we sampled these loci, we definitely see an excess of accelerations within the marine mammal lineages. Run the chunk below to see all the branches and their counts.
 
+```{r accel-counts-table-st-m2, out.width="50%", fig.align = "center", warning=FALSE, fig.height=8, fig.width=8}
+st_m2_counts = select(tree_info, label, st.m2.count)
+st_m2_counts = st_m2_counts[order(-st_m2_counts$st.m2.count), ]
+names(st_m2_counts) = c("Branch", "# accelerate loci under M2")
+# Select the columns with branch labels and M2 counts and sort
 
+st_m2_counts %>% kable(row.names=F) %>% kable_styling(bootstrap_options=c("striped", "condended", "responsive"), full_width=F)
+# Display the table
+```
+
+But does this really tell us that all those loci accelerated in marine mammals are important for living in the ocean? If we took the union of all the accelerated loci in those lineages would their functions all pop-up as being important for changing bone density or increasing body fat? Probably not. In fact a lot of those loci are probably also accelerated in non-marine mammals.
+
+# Using the tree to test hypotheses
+
+So let's use our phylogeny to setup a test. We really might only be interested in loci that are found to be accelerating ONLY in the ancestral marine mammal lineages. That is those leading to the Pinnipeds, leading to the Cetaceans, and Manatee since that is our only sample from Sirenia. Run the chunk of code to find elements that are accelerated ONLY in those branches:
 
 ## Ancestral mm accelerations
 
 ```{r anc-target-accel-st, out.width="75%", fig.align = "center", warning=FALSE}
 
 mm_anc_branches = c("turTru2-orcOrc1", "odoRosDiv1-lepWed1", "triMan1")
-st_results_m1 = subset(st_results, best.fit.model=="M1")
-st_results_mm_anc = data.frame()
+# A list of ancestral marine mammal lineages
 
-for(i in 1:nrow(st_results_m1)){
+st_results_m1_m2 = subset(st_results, best.fit.model=="M1" | best.fit.model=="M2")
+# Select only loci in which these lineages can be accelerated
+
+st_results_mm_anc = data.frame()
+for(i in 1:nrow(st_results_m1_m2)){
   accel_lineages = st_results_m1[i,]$accel.lineages.m1
   accel_lineages = strsplit(accel_lineages, split=",")[[1]]
+  # Get the accelerated branches from the current locus
+  
   accel_anc_lineages = intersect(accel_lineages, mm_anc_branches)
+  # Get a list of ancestral marine mammal branches that are accelerated in the current locus
   
   if(setequal(accel_anc_lineages, mm_anc_branches)){
-    st_results_mm_anc = rbind(st_results_mm_anc, st_results_m1[i,])
+  # Check if the current accelerated ancestral marine mammal branches match the full
+  # set of ancestral marine mammal branches
+    
+    if(all(accel_lineages %in% mm_branches)){
+    # Check if all the accelerated lineages in the current locus are marine mammal lineages
+      
+      st_results_mm_anc = rbind(st_results_mm_anc, st_results_m1[i,])
+      # Add this locus to the data frame of ancestrally accelerated marine mammal lineages
+    }
   }
 }
-
-
+# Count the number of times all three branches are accelerated and no non-marine mammal 
+# lineages are accelerated
 
 st_results_mm_anc %>% kable() %>% kable_styling(bootstrap_options=c("striped", "condended", "responsive"), full_width=F)
+# Display a table with the uniquely accelerated ancestral marine mammal loci
 
 
 ```
 
-## Control Tree
+So we've found that among our 2000 loci, out of those that fit M1 or M2, 4 are accelerating in the ancestral marine mammal branches and no where else in the tree (except other marine mammal branches). How does this compare to non-marine mammal lineages?
 
-```{r species-tree-scf, out.width="50%", fig.align = "center", warning=FALSE, fig.height=8}
-h = corecol(numcol=1, pal="wilke", offset=3)
-l = corecol(numcol=1, offset=3)
-# Colors
+## Control Tree (non-marine mammals)
+
+Run the chunk of code below to display a tree with marine mammal lineages and sister non-marine mammal clades labeled:
+
+```{r species-tree-control-st, out.width="50%", fig.align = "center", warning=FALSE, fig.height=8, fig.width=8}
 
 control_branches = c("ailMel1", "loxAfr1", "eleEdw1", "loxAfr3-eleEdw1", "oviAri3", "capHir1", "oviAri3-capHir1", "bosTau8", "bosTau8-oviAri3", "panHod1", "bosTau8-oviAri3", "panHod1-bosTau8")
+# A list of control branches sister to marine mammals
 
-tree_info$control = "N"
+tree_info$control = "background"
 tree_info[tree_info$label %in% control_branches,]$control = "control"
-tree_info[tree_info$label %in% mm_branches,]$control = "mm"
-
-#tree_info$control = ifelse(tree_info$label %in% control_branches, "Y", "N")
+tree_info[tree_info$label %in% mm_branches,]$control = "marine mammal"
+# Label the branches as control, mm, or neither
 
 control_tree = ggtree(tree, size=0.8, ladderize=F, aes(color=tree_info$control)) +
   geom_tiplab(color="#333333", size=4) +
-  scale_color_manual(name="Control lineages", values=c("N"="#666666", "mm"=corecol(numcol=1), "control"=corecol(numcol=1, offset=5))) +
-  geom_text(aes(x=branch, label=ifelse(tree_info$node.type=="internal" & tree_info$control!="N", tree_info$label, '')), size=3, vjust=-0.3, show.legend=F) +
-  theme(legend.position="none")
+  scale_color_manual(name="Branch types", values=c("background"="#666666", "marine mammal"=corecol(numcol=1), "control"=corecol(numcol=1, offset=5))) +
+  geom_text(aes(x=branch, label=ifelse(tree_info$node.type=="internal" & tree_info$control!="background", tree_info$label, '')), size=3, vjust=-0.3, show.legend=F) +
+  theme(legend.position=c(0.1,0.1))
+# Render the tree figure
+
 print(control_tree)
+# Display the tree figure
 
 ```
+
+So here we can pick out clades sister to marine mammals that don't share our traits of interest (those relating to living in water) and count the number of accelerated elements found uniquely in their ancestral branches.
 
 ```{r anc-control-accel-st, out.width="75%", fig.align = "center", warning=FALSE}
 
 control_anc_branches = c("loxAfr3-eleEdw1", "panHod1-bosTau8", "ailMel1")
-st_results_m2 = subset(st_results, best.fit.model=="M2")
-st_results_control_anc = data.frame()
+# A list of ancestral control branches
 
+st_results_m2 = subset(st_results, best.fit.model=="M2")
+# Select only those loci where these branches can be accelerated (M2)
+
+st_results_control_anc = data.frame()
 for(i in 1:nrow(st_results_m2)){
   accel_lineages = st_results_m2[i,]$accel.lineages.m2
   accel_lineages = strsplit(accel_lineages, split=",")[[1]]
+  # Get the accelerated branches from the current locus
+  
   accel_anc_lineages = intersect(accel_lineages, control_anc_branches)
+  # Get a list of ancestral control branches that are accelerated in the current locus
   
   if(setequal(accel_anc_lineages, control_anc_branches)){
+    # Check if all the accelerated lineages in the current locus are control lineages
+    
     st_results_control_anc = rbind(st_results_control_anc, st_results_m2[i,])
-
+    # Add this locus to the data frame of ancestrally accelerated control lineages
   }
+}
+# Count the number of times all three branches are accelerated and no non-marine mammal 
+# lineages are accelerated
+
+st_results_control_anc %>% kable() %>% kable_styling(bootstrap_options=c("striped", "condended", "responsive"), full_width=F)
+# Display a table with the uniquely accelerated ancestral control loci
+
+```
+
+Here we find only one element, so if our question was whether the transition to water led to excessive amounts of convergence... well maybe for this dataset.
+
+But the main point here is that we can use comparative genomics for anything like this. Let's try the same thing for echolocation:
+
+```{r species-tree-echo, out.width="50%", fig.align = "center", warning=FALSE, fig.height=8, fig.width=8}
+
+echo_branches = c("turTru2", "orcOrc1", "turTru2-orcOrc1", "myoLuc2", "myoDav1", "myoDav1-myoLuc2", "eptFus1", "eptFus1-myoDav1")
+# A list of echolocating mammals
+
+control_branches = c("capHir1", "oviAri3-capHir1", "bosTau8", "bosTau8-oviAri3", "panHod1", "bosTau8-oviAri3", "panHod1-bosTau8", "pteAle1", "pteVam1", "pteAle1-pteVam1")
+# A list of control branches sister to echolocating clades
+
+tree_info$control = "background"
+tree_info[tree_info$label %in% control_branches,]$control = "control"
+tree_info[tree_info$label %in% echo_branches,]$control = "echolocating"
+# Label the branches as control, mm, or neither
+
+control_tree = ggtree(tree, size=0.8, ladderize=F, aes(color=tree_info$control)) +
+  geom_tiplab(color="#333333", size=4) +
+  scale_color_manual(name="Branch types", values=c("background"="#666666", "echolocating"=corecol(numcol=1), "control"=corecol(numcol=1, offset=5))) +
+  geom_text(aes(x=branch, label=ifelse(tree_info$node.type=="internal" & tree_info$control!="background", tree_info$label, '')), size=3, vjust=-0.3, show.legend=F) +
+  theme(legend.position=c(0.1,0.1))
+# Render the tree figure
+
+print(control_tree)
+# Display the tree figure
+
+```
+
+Run the block below to count the number of elements accelerated in ancestral echolocating lineages:
+
+```{r echo-anc-accel-st, out.width="75%", fig.align = "center", warning=FALSE}
+
+echo_anc_branches = c("turTru2-orcOrc1", "myoDav1-myoLuc2")
+# A list of ancestral echolocating lineages
+
+st_results_m1_m2 = subset(st_results, best.fit.model=="M1" | best.fit.model=="M2")
+# Select only loci in which these lineages can be accelerated
+
+st_results_echo_anc = data.frame()
+for(i in 1:nrow(st_results_m1_m2)){
+  accel_lineages = st_results_m1[i,]$accel.lineages.m1
+  accel_lineages = strsplit(accel_lineages, split=",")[[1]]
+  # Get the accelerated branches from the current locus
+  
+  accel_anc_lineages = intersect(accel_lineages, echo_anc_branches)
+  # Get a list of ancestral echolocating branches that are accelerated in the current locus
+  
+  if(setequal(accel_anc_lineages, echo_anc_branches)){
+  # Check if the current accelerated ancestral echolocating branches match the full
+  # set of ancestral mecholocating branches
+    
+    if(all(accel_lineages %in% echo_branches)){
+    # Check if all the accelerated lineages in the current locus are echolocating lineages
+      
+      st_results_echo_anc = rbind(st_results_echo_anc, st_results_m1[i,])
+      # Add this locus to the data frame of ancestrally accelerated echolocating lineages
+    }
+  }
+}
+# Count the number of times all three branches are accelerated and no non-echolocating 
+# lineages are accelerated
+
+st_results_echo_anc %>% kable() %>% kable_styling(bootstrap_options=c("striped", "condended", "responsive"), full_width=F)
+# Display a table with the uniquely accelerated ancestral marine mammal loci
+
+```
+
+And this block in ancestral control lineages:
+
+```{r echo-anc-accel-st, out.width="75%", fig.align = "center", warning=FALSE}
+
+control_anc_branches = c("panHod1-bosTau8", "pteAle1-pteVam1")
+# A list of ancestral control branches
+
+st_results_m2 = subset(st_results, best.fit.model=="M2")
+# Select only those loci where these branches can be accelerated (M2)
+
+st_results_control_anc = data.frame()
+for(i in 1:nrow(st_results_m2)){
+  accel_lineages = st_results_m2[i,]$accel.lineages.m2
+  accel_lineages = strsplit(accel_lineages, split=",")[[1]]
+  # Get the accelerated branches from the current locus
+  
+  accel_anc_lineages = intersect(accel_lineages, control_anc_branches)
+  # Get a list of ancestral control branches that are accelerated in the current locus
+  
+  if(setequal(accel_anc_lineages, control_anc_branches)){
+    # Check if all the accelerated lineages in the current locus are control lineages
+    
+    st_results_control_anc = rbind(st_results_control_anc, st_results_m2[i,])
+    # Add this locus to the data frame of ancestrally accelerated control lineages
+  }
+}
+# Count the number of times all three branches are accelerated and no non-marine mammal 
+# lineages are accelerated
+
+st_results_control_anc %>% kable() %>% kable_styling(bootstrap_options=c("striped", "condended", "responsive"), full_width=F)
+# Display a table with the uniquely accelerated ancestral control loci
+
+```
+
+So this time, we don't see any excess of acceleration associated with echolocation. This is very consistent with previous results (but still not the whole dataset).
+
+# Phylogenetic discordance
+
+Discordance among the phylogenies inferred from different locations in the genome, and discordance between locus phylogenies and the inferred species tree, is known as phylogenetic discordance. Phylogenetic discordance can be caused by a variety of processes:
+
+1. Ancestral polymorphism persisting after speciation followed by recombination leads to **incomplete lineage sorting**
+2. Hybridization that results in **introgression** of loci from one lineage to another followed by recombination
+3. Gene duplication and subsequent loss can results in **hidden paralogy**
+4. Technical error
+
+When estimating substitution rates, the use of a single species tree on alignments from loci that have a different phylogeny results in the mis-mapping of substitutions and the mis-inference of rates. Downstream affects could include spurious inferences of rate acceleration or positive selection. PhyloAcc's gene tree model accounts for discordance caused by **incomplete lineage sorting** by sampling phylogenies for each locus and then estimating rates.
+
+But what practical effect does this have on results?
+
+## Quantifying discordance
+
+The PhyloAcc pipeline now quantifies discordance using **site concordance factors (sCF)**. That is, for each locus it counts the number of sites that support the topology by sampling quartets around internal branches. We then use this to decide which model to run the locus with, the species tree model or the gene tree model.
+
+Run this block of code to display average site concordance factors across all loci:
+
+```{r scf-tree, out.width="75%", fig.align = "center", warning=FALSE, fig.height=8, fig.width=8}
+
+h = corecol(numcol=1, pal="wilke", offset=3)
+l = corecol(numcol=1, offset=3)
+# Colors
+
+scf_tree_fig = ggtree(scf_tree, size=0.8, ladderize=F, aes(color=scf_tree_info$scf)) +
+  scale_color_continuous(name='sCF', low=l, high=h, limits=c(0,1)) +
+  geom_tiplab(color="#333333", fontface='italic', size=4) +
+  theme(legend.position=c(0.1,0.1))
+# Render the tree figure
+
+print(scf_tree_fig)
+# Display the tree figure
+
+```
+
+
+
+```{r tree-comps-st, out.width="50%", fig.align = "center", warning=FALSE, fig.width=12, fig.height=16}
+
+scf_data = select(aln_stats, locus, node.scf.avg)
+names(scf_data)[1] = "original.id"
+
+all_results = merge(st_results, gt_results, by="original.id", suffixes=c(".st", ".gt"))
+all_results = merge(all_results, scf_data, by="original.id")
+
+st_results_high = subset(all_results, node.scf.avg > 0.6)
+st_results_high = subset(st_results_high, best.fit.model.st == best.fit.model.gt)
+st_results_high = subset(st_results_high, best.fit.model.st != "M0" & best.fit.model.gt != "M0")
+high_locus = sample_n(st_results_high, 1)
+# This randomly selects a locus with high sCF where the best fit models match between
+# gene and species tree methods
+
+#high_locus = subset(st_results, original.id.st=="chr5-87")
+# Select an M1 locus as an example. Other good ones are: chr5-87
+
+high_st_model = tolower(high_locus$best.fit.model.st)
+high_gt_model = tolower(high_locus$best.fit.model.gt)
+
+## Selecting locus with high sCF
+##########
+
+st_results_low = subset(all_results, node.scf.avg < 0.4)
+st_results_low = subset(st_results_low, best.fit.model.st != best.fit.model.gt)
+st_results_low = subset(st_results_low, best.fit.model.st != "M0" & best.fit.model.gt != "M0")
+low_locus = sample_n(st_results_low, 1)
+# This randomly selects a locus with low sCF where the best fit models don't match between
+# gene and species tree methods
+
+#low_locus = subset(st_results, original.id.st="chr18-5")
+# Select an M1 locus as an example. Other good ones are: chr18-5, chr10-1
+
+low_st_model = tolower(low_locus$best.fit.model.st)
+low_gt_model = tolower(low_locus$best.fit.model.gt)
+
+## Selecting locus with LOW sCF
+##########
+
+con_high_st = strsplit(high_locus[[paste("conserved.lineages.", high_st_model, ".st" , sep="")]], split=",")[[1]]
+acc_high_st = strsplit(high_locus[[paste("accel.lineages.", high_st_model, ".st", sep="")]], split=",")[[1]]
+# HIGH SCF ST
+
+con_high_gt = strsplit(high_locus[[paste("conserved.lineages.", high_gt_model, ".gt", sep="")]], split=",")[[1]]
+acc_high_gt = strsplit(high_locus[[paste("accel.lineages.", high_gt_model, ".gt", sep="")]], split=",")[[1]]
+# HIGH SCF GT
+
+con_low_st = strsplit(low_locus[[paste("conserved.lineages.", low_st_model, ".st" , sep="")]], split=",")[[1]]
+acc_low_st = strsplit(low_locus[[paste("accel.lineages.", low_st_model, ".st" , sep="")]], split=",")[[1]]
+# LOW SCF ST
+
+con_low_gt = strsplit(low_locus[[paste("conserved.lineages.", low_gt_model, ".gt", sep="")]], split=",")[[1]]
+acc_low_gt = strsplit(low_locus[[paste("accel.lineages.", low_gt_model, ".gt", sep="")]], split=",")[[1]]
+# LOW SCF GT
+
+## Split the lineages in each state for both M1 and M2 into vectors
+##########
+
+tree_info$high.state.st = "background"
+tree_info[tree_info$label %in% acc_high_st,]$high.state.st = "accelerated"
+tree_info[tree_info$label %in% con_high_st,]$high.state.st = "conserved"
+# HIGH SCF ST
+  
+tree_info$high.state.gt = "background"
+tree_info[tree_info$label %in% acc_high_gt,]$high.state.gt = "accelerated"
+tree_info[tree_info$label %in% con_high_gt,]$high.state.gt = "conserved"
+# HIGH SCF GT
+
+tree_info$low.state.st = "background"
+tree_info[tree_info$label %in% acc_low_st,]$low.state.st = "accelerated"
+tree_info[tree_info$label %in% con_low_st,]$low.state.st = "conserved"
+# LOW SCF ST
+  
+tree_info$low.state.gt = "background"
+tree_info[tree_info$label %in% acc_low_gt,]$low.state.gt = "accelerated"
+tree_info[tree_info$label %in% con_low_gt,]$low.state.gt = "conserved"
+# LOW SCF GT
+
+# Label each branch in the tree as background, accelerated, or conserved for the best fitting model
+##########
+
+tree_info$high.bl.st = tree_info$branch.length
+tree_info[tree_info$label %in% con_high_st,]$high.bl.st = tree_info[tree_info$label %in% con_high_st,]$high.bl.st * high_locus[[paste("conserved.rate.", low_st_model, ".st" , sep="")]]
+tree_info[tree_info$label %in% acc_high_st,]$high.bl.st = tree_info[tree_info$label %in% acc_high_st,]$high.bl.st * high_locus[[paste("accel.rate.", low_st_model, ".st" , sep="")]]
+# HIGH SCF ST
+
+tree_info$high.bl.gt = tree_info$branch.length
+tree_info[tree_info$label %in% con_high_gt,]$high.bl.gt = tree_info[tree_info$label %in% con_high_gt,]$high.bl.gt * high_locus[[paste("conserved.rate.", low_st_model, ".gt" , sep="")]]
+tree_info[tree_info$label %in% acc_high_gt,]$high.bl.gt = tree_info[tree_info$label %in% acc_high_gt,]$high.bl.gt * high_locus[[paste("accel.rate.", low_st_model, ".gt" , sep="")]]
+# HIGH SCF GT
+
+tree_info$low.bl.st = tree_info$branch.length
+tree_info[tree_info$label %in% con_low_st,]$low.bl.st = tree_info[tree_info$label %in% con_low_st,]$low.bl.st * low_locus[[paste("conserved.rate.", low_st_model, ".st" , sep="")]]
+tree_info[tree_info$label %in% acc_low_st,]$low.bl.st = tree_info[tree_info$label %in% acc_low_st,]$low.bl.st * low_locus[[paste("accel.rate.", low_st_model, ".st" , sep="")]]
+# LOW SCF ST
+
+tree_info$low.bl.gt = tree_info$branch.length
+tree_info[tree_info$label %in% con_low_gt,]$low.bl.gt = tree_info[tree_info$label %in% con_low_gt,]$low.bl.gt * low_locus[[paste("conserved.rate.", low_st_model, ".gt" , sep="")]]
+tree_info[tree_info$label %in% acc_low_gt,]$low.bl.gt = tree_info[tree_info$label %in% acc_low_gt,]$low.bl.gt * low_locus[[paste("accel.rate.", low_st_model, ".gt" , sep="")]]
+# LOW SCF GT
+
+# M1 LOCUS:  Adjust branch lengths based on the substitution rates in the best fitting model
+##########
+
+high_st_tree = tree
+high_gt_tree = tree
+low_st_tree = tree
+low_gt_tree = tree
+
+for(i in 1:length(tree$edge.length)){
+  cur_len = tree$edge.length[i]
+  cur_len = format(round(cur_len, 8), nsmall=8)
+  # Get the original length for this branch and convert it to a rounded string
+  
+  if(!tree_info[format(round(tree_info$branch.length,8), nsmall=8)==cur_len,]$high.state.st == "background"){
+    high_st_tree$edge.length[i] = tree_info[format(round(tree_info$branch.length,8), nsmall=8)==cur_len,]$high.bl.st
+  }
+  # HIGH SCF ST
+  
+  if(!tree_info[format(round(tree_info$branch.length,8), nsmall=8)==cur_len,]$high.state.gt == "background"){
+    high_gt_tree$edge.length[i] = tree_info[format(round(tree_info$branch.length,8), nsmall=8)==cur_len,]$high.bl.gt
+  }
+  # HIGH SCF GT
+
+  if(!tree_info[format(round(tree_info$branch.length,8), nsmall=8)==cur_len,]$low.state.st == "background"){
+    low_st_tree$edge.length[i] = tree_info[format(round(tree_info$branch.length,8), nsmall=8)==cur_len,]$low.bl.st
+  }
+  # LOW SCF ST
+  
+  if(!tree_info[format(round(tree_info$branch.length,8), nsmall=8)==cur_len,]$low.state.gt == "background"){
+    low_gt_tree$edge.length[i] = tree_info[format(round(tree_info$branch.length,8), nsmall=8)==cur_len,]$low.bl.gt
+  }
+  # LOW SCF GT 
 
 }
+# Loop over every branch in the tree and adjust the branch length based on the state in the model
 
+####################
 
+cols = c("background"="#666666", "conserved"=corecol(numcol=1, pal="wilke", offset=1), "accelerated"=corecol(numcol=1, pal="wilke"))
+# Set colors for conservation states
 
+cur_title = paste("Locus: ", high_locus$original.id, " / Avg. sCF: ", round(high_locus$node.scf.avg,3), " / Displayed model: ", high_locus$best.fit.model.st, sep="")
+xmax = max(nodeHeights(high_st_tree)) + sd(nodeHeights(high_st_tree))
+high_st_tree_fig = ggtree(high_st_tree, size=0.8, ladderize=F, aes(color=tree_info$high.state.st)) +
+  geom_tiplab(color="#333333", size=3.2) +
+  xlim(0, xmax) +
+  scale_color_manual(name="Rate states", values=cols) +
+  #geom_text(aes(x=branch, label=ifelse(tree_info$node.type=="internal" & tree_info$mm=="Y", tree_info$label, '')), size=3, vjust=-0.3, show.legend=F) +
+  ggtitle(cur_title) +
+  theme(legend.position="bottom",
+        plot.margin=unit(c(1,1,1,1), "cm"))
+# HIGH SCF ST tree
 
+cur_title = paste("Locus: ", high_locus$original.id, " / Avg. sCF: ", round(high_locus$node.scf.avg,3), " / Displayed model: ", high_locus$best.fit.model.gt, sep="")
+xmax = max(nodeHeights(high_gt_tree)) + sd(nodeHeights(high_gt_tree))
+high_gt_tree_fig = ggtree(high_gt_tree, size=0.8, ladderize=F, aes(color=tree_info$high.state.gt)) +
+  geom_tiplab(color="#333333", size=3.2) +
+  xlim(0, xmax) +
+  scale_color_manual(name="Rate states", values=cols) +
+  #geom_text(aes(x=branch, label=ifelse(tree_info$node.type=="internal" & tree_info$mm=="Y", tree_info$label, '')), size=3, vjust=-0.3, show.legend=F) +
+  ggtitle(cur_title) +
+  theme(legend.position="bottom",
+        plot.margin=unit(c(1,1,1,1), "cm"))
+# HIGH SCF GT tree
 
+cur_title = paste("Locus: ", low_locus$original.id, " / Avg. sCF: ", round(low_locus$node.scf.avg,3), " / Displayed model: ", low_locus$best.fit.model.st, sep="")
+xmax = max(nodeHeights(low_st_tree)) + sd(nodeHeights(low_st_tree))
+low_st_tree_fig = ggtree(low_st_tree, size=0.8, ladderize=F, aes(color=tree_info$low.state.st)) +
+  geom_tiplab(color="#333333", size=3.2) +
+  xlim(0, xmax) +
+  scale_color_manual(name="Rate states", values=cols) +
+  #geom_text(aes(x=branch, label=ifelse(tree_info$node.type=="internal" & tree_info$mm=="Y", tree_info$label, '')), size=3, vjust=-0.3, show.legend=F) +
+  ggtitle(cur_title) +
+  theme(legend.position="bottom",
+        plot.margin=unit(c(1,1,1,1), "cm"))
+# LOW SCF ST tree
+
+cur_title = paste("Locus: ", low_locus$original.id, " / Avg. sCF: ", round(low_locus$node.scf.avg,3), " / Displayed model: ", low_locus$best.fit.model.gt, sep="")
+xmax = max(nodeHeights(low_gt_tree)) + sd(nodeHeights(low_gt_tree))
+low_gt_tree_fig = ggtree(low_gt_tree, size=0.8, ladderize=F, aes(color=tree_info$low.state.gt)) +
+  geom_tiplab(color="#333333", size=3.2) +
+  xlim(0, xmax) +
+  scale_color_manual(name="Rate states", values=cols) +
+  #geom_text(aes(x=branch, label=ifelse(tree_info$node.type=="internal" & tree_info$mm=="Y", tree_info$label, '')), size=3, vjust=-0.3, show.legend=F) +
+  ggtitle(cur_title) +
+  theme(legend.position="bottom",
+        plot.margin=unit(c(1,1,1,1), "cm"))
+# LOW SCF GT tree
+
+tree_legend = get_legend(high_st_tree_fig)
+# Get the legend from one fig
+
+tree_fig_top = plot_grid(high_st_tree_fig + theme(legend.position="none"),
+                     high_gt_tree_fig + theme(legend.position="none"),
+                     low_st_tree_fig + theme(legend.position="none"),
+                     low_gt_tree_fig + theme(legend.position="none"),
+                     ncol=2)
+# Combine the M1 locus trees into a single row, removing individual legends
+
+tree_fig = plot_grid(tree_fig_top, tree_legend, nrow=2, rel_heights=c(1,0.1))
+# Combine the M1 locus row, M2 locus row, and a single legend
+
+print(tree_fig)
+# Display the figure
 
 ```
 
 
-
-```{r bf1-bf2-gt, out.width="75%", fig.align = "center", warning=FALSE}
-
-logbf1_cutoff = 2
-logbf2_cutoff = 2
-
-gt_results$target.acc = ifelse(gt_results$logbf1 > logbf1_cutoff & gt_results$logbf2 > logbf2_cutoff, "Y", "N")
-# Label elements with BF1 > 4 and BF2 > 4, this is equivalent to selecting elements
-# with "M1" in the best.fit.model column
-
-num_m1 = nrow(subset(gt_results, target.acc=="Y"))
-
-bf_spread_gt = ggplot(gt_results, aes(x=logbf1, y=logbf2, color=target.acc)) +
-  geom_point(size=2, alpha=0.25) +
-  geom_vline(xintercept=logbf1_cutoff, size=0.75, linetype="dotted", color="#999999") +
-  geom_hline(yintercept=logbf1_cutoff, size=0.75, linetype="dotted", color="#999999") +
-  ggtitle(paste(num_m1, " elements accelerated in\nmarine mammal lineages (GT)", sep="")) +
-  xlab("log BF1") +
-  ylab("log BF2") +
-  scale_color_manual(values=corecol(pal="wilke", numcol=2)) +
-  bartheme() +
-  theme(legend.position="none")
-bf_spread_gt = ggExtra::ggMarginal(bf_spread_gt, type="histogram", bins=50, fill=corecol(pal="wilke", numcol=1, offset=4), color="#666666")
-print(bf_spread_gt)
-
-```
-
-## Including Plots
-
-You can also embed plots, for example:
-
-```{r pressure, echo=FALSE}
-plot(pressure)
-```
-
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
