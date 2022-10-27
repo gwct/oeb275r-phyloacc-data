@@ -54,21 +54,21 @@ library("ggtree")
 # Install and ggtree separately b/c it's weird
 # The packages to load
 
-source(here("scripts", "lib", "design.r"))
-source(here("scripts", "lib", "get_tree_info.r"))
+source(here("lib", "design.r"))
+source(here("lib", "get_tree_info.r"))
 # Some custom libraries
 
 ```
 
 ```{r read-files, out.width="75%", fig.align = "center", warning=FALSE}
 
-tree_file = here("data", "mammal.tre")
+tree_file = here("..", "data", "mammal.tre")
 tree = read.tree(file=tree_file)
 tree_to_df_list = treeToDF(tree)
 tree_info = tree_to_df_list[["info"]]
 # The mammal tree
 
-scf_tree_file = here("data", "phyloacc-scf.tre")
+scf_tree_file = here("..", "data", "phyloacc-scf.tre")
 scf_tree = read.tree(file=scf_tree_file)
 tree_to_df_list = treeToDF(scf_tree)
 scf_tree_info = tree_to_df_list[["info"]]
@@ -78,15 +78,15 @@ scf_tree_info[scf_tree_info$tp=="<60>",]$scf = NA
 scf_tree_info$scf = as.numeric(scf_tree_info$scf)
 # The tree with sCF labels
 
-aln_stats_file = here("data", "phyloacc-aln-stats.csv")
+aln_stats_file = here("..", "data", "phyloacc-aln-stats.csv")
 aln_stats = read.csv(aln_stats_file, header=T)
 # Alignment stats for each locus, including average site concordance factors (sCF)
 
-st_result_file = here("data", "st-test-branches", "results", "elem_lik.txt")
+st_result_file = here("..", "data", "st-test-branches", "results", "elem_lik.txt")
 st_results = read.csv(st_result_file, header=T, sep="\t", comment.char="#")
 # PhyloAcc results from the species tree run
 
-gt_result_file = here("data", "gt-test-branches", "results", "elem_lik.txt")
+gt_result_file = here("..", "data", "gt-test-branches", "results", "elem_lik.txt")
 gt_results = read.csv(gt_result_file, header=T, sep="\t", comment.char="#")
 # PhyloAcc results from the gene tree run
 
