@@ -1,7 +1,15 @@
 ---
-title: "PhyloAcc exercises"
-output: html_document
-date: '2022-10-27'
+title: "OEB275R - PhyloAcc exercises - Fall 2022"
+author: "[gwct](https://gwct.github.io/)"
+date: "`r format(Sys.time(), '%m/%d/%Y %H:%M:%S %Z')`"
+output: 
+  #html_document:
+   rmdformats::robobook: 
+    highlight: kate
+    df_print: paged
+    code_folding: hide
+    number_sections: true
+    toc_depth: 3
 ---
 
 # Intro
@@ -33,7 +41,7 @@ install_load <- function (pkg_vec){
 knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
 # RMarkdown options
 
-packages = c("ggplot2", "dplyr", "tidyr", "cowplot", "ggExtra", "stringr", "kableExtra", "viridis", "here", "optparse", "phytools")
+packages = c("ggplot2", "dplyr", "tidyr", "cowplot", "ggExtra", "stringr", "kableExtra", "viridis", "here", "optparse", "phytools", "rmdformats")
 install_load(packages)
 # install regular packages
 
@@ -93,7 +101,7 @@ This data consists of ~2,000 conserved non-coding regions among 62 mammal specie
 
 Run the chunk below to display the species tree for these mammals as inferred by the team from the UCSC genome browser:
 
-```{r species-tree-mm, out.width="50%", fig.align = "center", warning=FALSE, fig.height=8, fig.width=10}
+```{r species-tree-mm, out.width="60%", fig.align = "center", warning=FALSE, fig.height=10, fig.width=10}
 
 mm_branches = c("turTru2", "orcOrc1", "turTru2-orcOrc1", "odoRosDiv1", "lepWed1", "odoRosDiv1-lepWed1", "triMan1")
 tree_info$mm = ifelse(tree_info$label %in% mm_branches, "Y", "N")
@@ -111,6 +119,9 @@ print(mm_tree)
 
 ```
 
+In this tree, the marine mammal lineages, which were set as the target lineages for the M1 model in PhyloAcc, are shown in orange.
+
+
 # PhyloAcc output
 
 So what does the output of PhyloAcc look like? There are several files produced, including matrices of rates and conservation states. Previously the elem_lik.txt file contained the likelihood and Bayes factors for each of the three models for each locus. In the latest version, I've tried to summarize a lot of the important data into a single table in this file. We read that file into a data frame above, let's take a look at its contents here by running the chunk below (note that best.fit.model based on Bayes factor cutoffs of 4): 
@@ -118,7 +129,12 @@ So what does the output of PhyloAcc look like? There are several files produced,
 ```{r results-table-st, fig.align="center", warning=FALSE, fig.height=8}
 
 st_results_display = head(st_results, n=20)
-st_results_display %>% kable(row.names=F) %>% kable_styling(bootstrap_options=c("striped", "condended", "responsive"), full_width=F)
+if(interactive()){
+  st_results_display %>% kable(row.names=F) %>% kable_styling(bootstrap_options=c("striped", "condended", "responsive"), full_width=F)
+}else{
+  st_results_display %>% kable(row.names=F) %>% kable_styling(bootstrap_options=c("striped", "condended", "responsive"), full_width=F) %>% 
+    scroll_box(width = "100%", height = "20vh")
+}
 # Subset the table and display
 
 ```
@@ -153,27 +169,29 @@ This is BF2 and if it is above 1 it indicates more support for M1 than M2 given 
 
 If both BF1 and BF2 are high enough (above some threshold or cutoff), then we would say that M1 best fits the data and these would be the loci that likely have accelerated substitution rates exclusively in our target lineages.
 
+## Distributions
+
 Well, what does this look like? What are the distributions of BF1 and BF2 in our data, and how many loci do we find fit M1 best using BF cutoffs of 4? Run the chunk below to display the distributions:
 
-```{r bf1-bf2-st, out.width="75%", fig.align = "center", warning=FALSE}
+```{r bf1-bf2-st, out.width="60%", fig.align = "center", warning=FALSE}
 
-logbf1_cutoff = 10
+logbf1_cutoff = 4
 logbf2_cutoff = 4
 # Bayes factor cutoffs
 # If you want, change these values and re-run the block to see how it affects the results
 
 st_results$target.acc = ifelse(st_results$logbf1 > logbf1_cutoff & st_results$logbf2 > logbf2_cutoff, "Y", "N")
-# Label elements with BF1 > 4 and BF2 > 4, this is equivalent to selecting elements
+# Label loci with BF1 > 4 and BF2 > 4, this is equivalent to selecting loci
 # with "M1" in the best.fit.model column
 
 num_m1 = nrow(subset(st_results, target.acc=="Y"))
-# Count the number of M1 elements
+# Count the number of M1 loci
 
 bf_spread_st = ggplot(st_results, aes(x=logbf1, y=logbf2, color=target.acc)) +
   geom_point(size=2, alpha=0.25) +
   geom_vline(xintercept=logbf1_cutoff, size=0.75, linetype="dotted", color="#999999") +
   geom_hline(yintercept=logbf2_cutoff, size=0.75, linetype="dotted", color="#999999") +
-  ggtitle(paste(num_m1, " elements accelerated in\nmarine mammal lineages (ST)", sep="")) +
+  ggtitle(paste(num_m1, " loci accelerated in\nmarine mammal lineages (ST)", sep="")) +
   xlab("log BF1") +
   ylab("log BF2") +
   scale_color_manual(values=corecol(pal="wilke", numcol=2)) +
@@ -188,21 +206,22 @@ print(bf_spread_st)
 
 On the x-axis we have the distribution of BF1, which compares M1 to M0. Dots further on the left show more support for M0 while dots to the right show more support for M1. The y-axis shows BF2. Dots towards the top show more support for M1 and dots towards the bottom show support for M2. We also show the distributions of each BF on the opposite axis and place lines at our cutoffs for each BF. Any locus above both the BF1 and BF2 cutoffs are shown in blue. These are the ones we would consider to be accelerated in marine mammal lineages.
 
-With these cutoffs, we count 784 out of our 2000 elements being accelerated for marine mammals. That is a lot, but please remember this is NOT a random sampling of loci. This sample includes many of the elements originally found to be accelerated in marine mammals and the total dataset has over 200,000 elements.
+With these cutoffs, we count 784 out of our 2000 loci being accelerated for marine mammals. That is a lot, but there are a couple of important things to remember:
 
-And also remember we are still working with loci run with the species tree model, so phylogenetic discordance has not been accounted for.
+1. This is NOT a random sampling of loci. This sample includes many of the loci originally found to be accelerated in marine mammals and the total dataset has over 200,000 loci.
+2. We are still working with loci run with the species tree method, so phylogenetic discordance has not been accounted for.
 
 # Substitution rates
 
 So what do the different models look like in terms of substitution rates? Below we'll take a look at rates represented as branch lengths on the species tree, so longer branches mean higher substitution rates. We'll look at two loci: one where M1 best fits the data and one where M2 best fits the data. For the locus that best fits M1, we'll look at both the M1 and M2 fits to get an intuition for what PhyloAcc is doing. Run the block below to generate the trees:
 
-```{r tree-comps-st, out.width="50%", fig.align = "center", warning=FALSE, fig.width=12, fig.height=16}
+```{r tree-comps-st, out.width="90%", fig.align = "center", warning=FALSE, fig.width=12, fig.height=16}
 
 #st_results_m1 = subset(st_results, best.fit.model=="M1")
 #m1_locus = sample_n(st_results_m1, 1)
 # This randomly selects an M1 locus
 
-m1_locus = subset(st_results, phyloacc.id=="73-15")
+m1_locus = subset(st_results, phyloacc.id=="68-5")
 # Select an M1 locus as an example. Other good ones are: 68-5, 48-1, 3-24, 73-15
 
 #st_results_m2 = subset(st_results, best.fit.model=="M2")
@@ -337,23 +356,23 @@ print(tree_fig)
 
 ```
 
-The top two rows show trees from the same locus with branches and conservation states under M1 (left) and M2 (right). The model that best fits this locus is M1. You can see that, when we allow acceleration on any branch with M2, many branches are inferred to be in the accelerated state, including all of the marine mammal branches. However, the probability of this model is lower than the probability of accelerations occurring only on marine mammal lineages, so we select that as the model for this locus and we can further investigate whether this element may play a role in the aquatic phenotype.
+The top two rows show trees from the same locus with branches and conservation states under M1 (left) and M2 (right). The model that best fits this locus is M1. You can see that, when we allow acceleration on any branch with M2, some non-marine mammal lineages are inferred to be in the accelerated state in addition to the marine mammals. However, the probability of this model is lower than the probability of accelerations occurring only on marine mammal lineages, so we select M1 as the model for this locus and we can further investigate whether this locus may play a role in the aquatic phenotype.
 
 Below we have an locus that best fits M2, free acceleration throughout the tree. Here you see that some of the marine mammal lineages are accelerated, but so are many others. Given that M2 best fits this locus we probably wouldn't think it is involved in aquatic lifestyles for mammals.
+
+# Bayes factor 3 and comparative genomics
 
 And that brings up one of the biggest advantages of comparative genomics. We want to test whether certain changes at the molecular level play a role in adaptive phenotypes. So we can identify species with traits of interest and then perform functional experiments on them, but this is limited to a small set of model organisms. We can't perform those experiments with a lot of samples and different genomic and environmental backgrounds.
 
 But evolution has done the experiment for us. When we combine the genome sequences, trait data, and phylogenies we can test our hypotheses in the context of the tree, using branches without the trait of interest as a control.
 
-# Accelerated elements per branch with M2
-
-For example, we can count how many times each branch is inferred to be accelerated across all elements. For this we use a third Bayes factor:
+For example, we can count how many times each branch is inferred to be accelerated across all loci. For this we use a third Bayes factor:
 
 $$BF3 = \frac{P(Y | M2)}{P(Y | M0)}$$
 
 This tells us whether the full model (M2) that allows acceleration on any branch supports the data better than the model with no acceleration (M0). We can then look at all loci that contain some acceleration (M2) and compare counts between our branches of interest and the rest of the tree. Run the block below to make these counts:
 
-```{r accel-counts-st-m2, out.width="50%", fig.align = "center", warning=FALSE, fig.height=8, fig.width=8}
+```{r accel-counts-st-m2, out.width="60%", fig.align = "center", warning=FALSE, fig.height=8, fig.width=10}
 
 logbf3_cutoff = 4
 # The cutoff value for BF3
@@ -395,10 +414,11 @@ Here, unsurprisingly given how we sampled these loci, we definitely see an exces
 ```{r accel-counts-table-st-m2, out.width="50%", fig.align = "center", warning=FALSE, fig.height=8, fig.width=8}
 st_m2_counts = select(tree_info, label, st.m2.count)
 st_m2_counts = st_m2_counts[order(-st_m2_counts$st.m2.count), ]
-names(st_m2_counts) = c("Branch", "# accelerate loci under M2")
+names(st_m2_counts) = c("Branch", "# accelerated loci under M2")
 # Select the columns with branch labels and M2 counts and sort
 
-st_m2_counts %>% kable(row.names=F) %>% kable_styling(bootstrap_options=c("striped", "condended", "responsive"), full_width=F)
+st_m2_counts %>% kable(row.names=F) %>% kable_styling(bootstrap_options=c("striped", "condended", "responsive"), full_width=F) %>% 
+   scroll_box(width = "100%", height = "20vh")
 # Display the table
 ```
 
@@ -406,7 +426,7 @@ But does this really tell us that all those loci accelerated in marine mammals a
 
 # Using the tree to test hypotheses
 
-So let's use our phylogeny to setup a test. We really might only be interested in loci that are found to be accelerating ONLY in the ancestral marine mammal lineages. That is those leading to the Pinnipeds, leading to the Cetaceans, and Manatee since that is our only sample from Sirenia. Run the chunk of code to find elements that are accelerated ONLY in those branches:
+So let's use our phylogeny to setup a test. We really might only be interested in loci that are found to be accelerating ONLY in the ancestral marine mammal lineages. That is those leading to the Pinnipeds, leading to the Cetaceans, and Manatee since that is our only sample from Sirenia. Run the chunk of code to find loci that are accelerated ONLY in those branches:
 
 ## Ancestral mm accelerations
 
@@ -446,7 +466,8 @@ for(i in 1:nrow(st_results_m1_m2)){
 # Count the number of times all three branches are accelerated and no non-marine mammal 
 # lineages are accelerated
 
-st_results_mm_anc %>% kable() %>% kable_styling(bootstrap_options=c("striped", "condended", "responsive"), full_width=F)
+st_results_mm_anc %>% kable() %>% kable_styling(bootstrap_options=c("striped", "condended", "responsive"), full_width=F) %>% 
+ scroll_box(width = "100%", height = "20vh")
 # Display a table with the uniquely accelerated ancestral marine mammal loci
 
 
@@ -458,7 +479,7 @@ So we've found that among our 2000 loci, out of those that fit M1 or M2, 4 are a
 
 Run the chunk of code below to display a tree with marine mammal lineages and sister non-marine mammal clades labeled:
 
-```{r species-tree-control-st, out.width="50%", fig.align = "center", warning=FALSE, fig.height=8, fig.width=8}
+```{r species-tree-control-st, out.width="60%", fig.align = "center", warning=FALSE, fig.height=8, fig.width=10}
 
 control_branches = c("ailMel1", "loxAfr1", "eleEdw1", "loxAfr3-eleEdw1", "oviAri3", "capHir1", "oviAri3-capHir1", "bosTau8", "bosTau8-oviAri3", "panHod1", "bosTau8-oviAri3", "panHod1-bosTau8")
 # A list of control branches sister to marine mammals
@@ -480,7 +501,7 @@ print(control_tree)
 
 ```
 
-So here we can pick out clades sister to marine mammals that don't share our traits of interest (those relating to living in water) and count the number of accelerated elements found uniquely in their ancestral branches.
+So here we can pick out clades sister to marine mammals that don't share our traits of interest (those relating to living in water) and count the number of accelerated loci found uniquely in their ancestral branches.
 
 ```{r anc-control-accel-st, out.width="75%", fig.align = "center", warning=FALSE}
 
@@ -509,16 +530,19 @@ for(i in 1:nrow(st_results_m2)){
 # Count the number of times all three branches are accelerated and no non-marine mammal 
 # lineages are accelerated
 
-st_results_control_anc %>% kable() %>% kable_styling(bootstrap_options=c("striped", "condended", "responsive"), full_width=F)
+st_results_control_anc %>% kable() %>% kable_styling(bootstrap_options=c("striped", "condended", "responsive"), full_width=F) %>% 
+ scroll_box(width = "100%", height = "20vh")
 # Display a table with the uniquely accelerated ancestral control loci
 
 ```
 
-Here we find only one element, so if our question was whether the transition to water led to excessive amounts of convergence... well maybe for this dataset.
+Here we find only one locus, so if our question was whether the transition to water led to excessive amounts of convergence... well maybe for this dataset.
+
+## Echolocating mammals
 
 But the main point here is that we can use comparative genomics for anything like this. Let's try the same thing for echolocation:
 
-```{r species-tree-echo, out.width="50%", fig.align = "center", warning=FALSE, fig.height=8, fig.width=8}
+```{r species-tree-echo, out.width="60%", fig.align = "center", warning=FALSE, fig.height=8, fig.width=10}
 
 echo_branches = c("turTru2", "orcOrc1", "turTru2-orcOrc1", "myoLuc2", "myoDav1", "myoDav1-myoLuc2", "eptFus1", "eptFus1-myoDav1")
 # A list of echolocating mammals
@@ -543,7 +567,7 @@ print(control_tree)
 
 ```
 
-Run the block below to count the number of elements accelerated in ancestral echolocating lineages:
+Run the block below to count the number of loci accelerated in ancestral echolocating lineages:
 
 ```{r echo-anc-accel-st, out.width="75%", fig.align = "center", warning=FALSE}
 
@@ -579,7 +603,8 @@ for(i in 1:nrow(st_results_m1_m2)){
 # Count the number of times all three branches are accelerated and no non-echolocating 
 # lineages are accelerated
 
-st_results_echo_anc %>% kable() %>% kable_styling(bootstrap_options=c("striped", "condended", "responsive"), full_width=F)
+st_results_echo_anc %>% kable() %>% kable_styling(bootstrap_options=c("striped", "condended", "responsive"), full_width=F) %>% 
+ scroll_box(width = "100%", height = "20vh")
 # Display a table with the uniquely accelerated ancestral marine mammal loci
 
 ```
@@ -613,7 +638,8 @@ for(i in 1:nrow(st_results_m2)){
 # Count the number of times all three branches are accelerated and no non-marine mammal 
 # lineages are accelerated
 
-st_results_control_anc %>% kable() %>% kable_styling(bootstrap_options=c("striped", "condended", "responsive"), full_width=F)
+st_results_control_anc %>% kable() %>% kable_styling(bootstrap_options=c("striped", "condended", "responsive"), full_width=F) %>% 
+ scroll_box(width = "100%", height = "20vh")
 # Display a table with the uniquely accelerated ancestral control loci
 
 ```
@@ -629,17 +655,23 @@ Discordance among the phylogenies inferred from different locations in the genom
 3. Gene duplication and subsequent loss can results in **hidden paralogy**
 4. Technical error
 
-When estimating substitution rates, the use of a single species tree on alignments from loci that have a different phylogeny results in the mis-mapping of substitutions and the mis-inference of rates. Downstream affects could include spurious inferences of rate acceleration or positive selection. PhyloAcc's gene tree model accounts for discordance caused by **incomplete lineage sorting** by sampling phylogenies for each locus and then estimating rates.
+See [Maddison 1997](https://doi.org/10.1093/sysbio/46.3.523) for a great intro to phylogenetic discordance, [Edwards 2009](https://doi.org/10.1111/j.1558-5646.2008.00549.x) for an in depth consideration of the effects of phylogenetic discordance, and [Hahn & Nakhleh 2015](https://doi.org/10.1111/evo.12832) for an example of how discordance can affect inferences (in bats!).
+
+When estimating substitution rates, the use of a single species tree on alignments from loci that have a different phylogeny results in the mis-mapping of substitutions and the mis-inference of rates [Mendes & Hahn 2016](https://doi.org/10.1093/sysbio/syw018). Downstream affects could include spurious inferences of rate acceleration or positive selection. PhyloAcc's gene tree model accounts for discordance caused by **incomplete lineage sorting** by sampling phylogenies for each locus and then estimating rates.
 
 But what practical effect does this have on results?
 
 ## Quantifying discordance
 
-The PhyloAcc pipeline now quantifies discordance using **site concordance factors (sCF)**. That is, for each locus it counts the number of sites that support the topology by sampling quartets around internal branches. We then use this to decide which model to run the locus with, the species tree model or the gene tree model.
+The PhyloAcc pipeline now quantifies discordance using **site concordance factors (sCF)**. That is, for each locus it counts the number of sites that support the topology by sampling quartets around internal branches. For a branch $x$ with a sampled quartet $q$, the concordance factor would be:
+
+$$sCF_q(x) = \frac{|\{ \text{site} : \text{site is concordant with } x \}}{|\{ \text{site} : \text{site is decisive for } x \}}$$
+
+We sample many quartets and average them together and then use the concordance factors to decide which model to run the locus with, the species tree model or the gene tree method.
 
 Run this block of code to display average site concordance factors across all loci:
 
-```{r scf-tree, out.width="75%", fig.align = "center", warning=FALSE, fig.height=8, fig.width=8}
+```{r scf-tree, out.width="60%", fig.align = "center", warning=FALSE, fig.height=8, fig.width=10}
 
 h = corecol(numcol=1, pal="wilke", offset=3)
 l = corecol(numcol=1, offset=3)
@@ -658,7 +690,7 @@ print(scf_tree_fig)
 
 This tree shows concordance factors averaged across all loci. PhyloAcc also calculates concordance factors individually for each locus and averages them across all branches:
 
-```{r scf-dist, out.width="50%", fig.align = "center", warning=FALSE, fig.width=6, fig.height=4}
+```{r scf-dist, out.width="60%", fig.align = "center", warning=FALSE}
 
 scf_dist = ggplot(data=aln_stats, aes(x=node.scf.avg)) +
   geom_histogram(bins=50, fill=corecol(pal="wilke", numcol=1, offset=1), color="#999999") +
@@ -673,11 +705,11 @@ print(scf_dist)
 
 This tells us that for many loci, average sCF is above 0.5, meaning more than 50% of sites support the species tree topology.
 
-## Effects of discordance
+## Effects of discordance on PhyloAcc results
 
 We can compare loci run through both the species tree and gene tree models. Here we will take one locus with high sCF and one with low to see how the different models affect inference:
 
-```{r tree-comps-gt, out.width="50%", fig.align = "center", warning=FALSE, fig.width=12, fig.height=16}
+```{r tree-comps-gt, out.width="90%", fig.align = "center", warning=FALSE, fig.width=12, fig.height=16}
 
 scf_data = select(aln_stats, locus, node.scf.avg)
 names(scf_data)[1] = "original.id"
@@ -706,12 +738,12 @@ st_results_low = subset(all_results, node.scf.avg < 0.45)
 st_results_low = subset(st_results_low, best.fit.model.st != best.fit.model.gt)
 st_results_low = subset(st_results_low, best.fit.model.st != "M0" & best.fit.model.gt != "M0")
 
-low_locus = sample_n(st_results_low, 1)
+#low_locus = sample_n(st_results_low, 1)
 # This randomly selects a locus with low sCF where the best fit models don't match between
 # gene and species tree methods
 
-#low_locus = subset(st_results_low, original.id="chr15-72")
-# Select an M1 locus as an example. Other good ones are: chr15-72
+low_locus = subset(st_results_low, original.id=="chr15-72")
+# Select an M1 locus as an example. Other good ones are: chr15-72, chr1-11
 
 low_st_model = tolower(low_locus$best.fit.model.st)
 low_gt_model = tolower(low_locus$best.fit.model.gt)
@@ -895,6 +927,142 @@ On the bottom, we show another locus from the low end of the sCF distribution. A
 
 # The end
 
-If you have the knitr package installed you can compile this document to an HTML page and save it with all figures generated. To do so, click on the "Knit" button above the text editor!
+If you see a "Knit" button above the window containing the code you can compile this document to an HTML page and save it with all figures generated. To do so, click on the "Knit" button above the text editor!
 
 Thanks for your attention! 
+
+---
+
+
+
+
+
+
+
+
+
+```{css, echo=FALSE}
+
+/* STYLES FOR KNITTED HTML DOCUMENT - DO NOT EDIT */
+
+/*------------------------------------------------------*/
+/* Regular markdown styles */
+/* .main-container {
+    min-width:75%;
+} */
+
+/*------------------------------------------------------*/
+/* bookthedown styles */
+#content{
+    min-width:75%;
+}
+.page-inner{
+    min-width:100%;
+    background-color:#f2f2f2;
+}
+/* Widens page content so there isn't a bunch of wasted space on the sides */
+
+#content{
+    background-color:#f2f2f2;
+}
+.row{
+    background-color:#f2f2f2;
+}
+/* Changes background color so there is contrast between figures and page */
+
+.book .book-body .page-inner section.normal pre.sourceCode{
+    margin:0;
+}
+/* Removes white background stripe when code is expanded */
+
+nav#toc > ul > li > a{
+    display:flex !important;
+    align-items:center !important;
+ }
+ nav#toc > ul > li > a > span{
+    padding-right:15px;
+ }
+ /* Spaces the number from the text in table of contents level 1 */
+
+.authors > li:nth-child(2) > span:nth-child(1) > a:nth-child(2){
+    display:inline-block;
+    padding:0px 4px;
+}
+/* Makes the author icon and text line up */
+
+li.active > ul > li {
+    max-height:none !important;
+   }
+li.active > ul > li > ul > li {
+max-height:none !important;
+}
+/* Prevents level 3 of table of contents from being cutoff by removing max-height of level 2 for both active and inactive states */
+
+nav#toc > ul.nav > li.active > ul > li > a{
+    display:flex;
+    align-items:center;
+}
+nav#toc > ul.nav > li.active > ul > li > a > span{
+    padding: 0px 15px;
+}
+nav#toc ul.nav li.active ul li ul li a{
+    display: flex;
+    align-items:center;
+}
+nav#toc ul.nav li.active ul li ul li a span{
+    padding: 0px 15px;
+}
+/* Centers the table of contents text for levels 2 and 3 */
+
+.book-summary .title{
+    background-color:#009292;
+    color: #ececec;
+}
+.divider{
+    display:none;
+}
+/* TOC title colors */
+
+.authors{
+    background-color:#009292;
+    padding-top:10px !important;
+}
+.authors a{
+    color:#ececec !important;
+}
+.authors span{
+    color:#ececec !important;
+}
+.glyphicon{
+    color:#ececec;
+}
+/* TOC footer colors */
+
+/*------------------------------------------------------*/
+/* Footer grid styles */
+#footer {
+	font-family: "Courier New", Courier, monospace;
+	background-color: #fff;
+	color:#333;
+	font-size:0.6em;
+	height:3vh;
+	display: flex;
+	justify-content: center;
+	align-content: center;
+	flex-direction: column;
+    -webkit-box-sizing: border-box;
+    -moz-box-sizing: border-box;
+    box-sizing: border-box;
+	border-top:1px solid #333;
+	width:100%;
+}
+#footer_text {
+}
+@media (max-width: 1025px) {
+	#footer { height:6vh; }
+	#footer_text { top: 25%; }
+}
+/*------------------------------------------------------*/
+
+
+```
