@@ -161,7 +161,7 @@ For example, if we want to know if the model that allows accelerated rates on th
 
 $$BF1 = \frac{P(Y | M1)}{P(Y | M0)}$$
 
-Where $Y$ is the data (aligned sequences) and $M*$ is the model. As you can see, this is BF1 and is calculated in the main output table. We can also compare the model that allows acclerated rates to be fit to only the target lineages (M1) to a model that allows accelerated rates on any lineage (M2):
+Where $Y$ is the data (aligned sequences) and $M*$ is the model. As you can see, this is BF1 and is calculated in the main output table. We can also compare the model that allows accelerated rates to be fit to only the target lineages (M1) to a model that allows accelerated rates on any lineage (M2):
 
 $$BF2 = \frac{P(Y | M1)}{P(Y | M2)}$$
 
