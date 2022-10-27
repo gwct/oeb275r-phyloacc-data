@@ -428,7 +428,7 @@ But does this really tell us that all those loci accelerated in marine mammals a
 
 So let's use our phylogeny to setup a test. We really might only be interested in loci that are found to be accelerating ONLY in the ancestral marine mammal lineages. That is those leading to the Pinnipeds, leading to the Cetaceans, and Manatee since that is our only sample from Sirenia. Run the chunk of code to find loci that are accelerated ONLY in those branches:
 
-## Ancestral mm accelerations
+## Ancestral marine mammal accelerations
 
 ```{r anc-target-accel-st, out.width="75%", fig.align = "center", warning=FALSE}
 
